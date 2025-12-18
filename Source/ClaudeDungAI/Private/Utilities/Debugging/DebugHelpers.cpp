@@ -84,10 +84,9 @@ void UDebugHelpers::LogSectionHeader(const FString& Title)
 {
 	if (!ShouldLog(EDebugLogLevel::Important)) return;
 
-	FString HeaderLine = TEXT("========================================");
-	UE_LOG(LogTemp, Warning, TEXT("%s"), *HeaderLine);
-	UE_LOG(LogTemp, Warning, TEXT("%s %s"), *GetCategoryPrefix(), *Title);
-	UE_LOG(LogTemp, Warning, TEXT("%s"), *HeaderLine);
+	// Just log the title without the ======== lines
+	FString FullMessage = FString::Printf(TEXT("%s %s"), *GetCategoryPrefix(), *Title);
+	UE_LOG(LogTemp, Warning, TEXT("%s"), *FullMessage);
 }
 
 void UDebugHelpers::LogStatistic(const FString& Label, int32 Value)

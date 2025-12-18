@@ -229,4 +229,7 @@ void ARoomSpawner::LogRoomStatistics()
 	DebugHelpers->LogStatistic(TEXT("Empty Cells"), EmptyCells);
 	DebugHelpers->LogStatistic(TEXT("Occupied Cells"), OccupiedCells);
 	DebugHelpers->LogStatistic(TEXT("Occupancy"), OccupancyPercent);
+	
+	// End header (NEW)
+	DebugHelpers->LogSectionHeader(TEXT("ROOM STATISTICS"));
 }
