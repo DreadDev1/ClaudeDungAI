@@ -20,23 +20,9 @@ ARoomSpawner::ARoomSpawner()
 	bIsGenerated = false;
 }
 
-// Called when the game starts or when spawned
-void ARoomSpawner::BeginPlay()
-{
-	Super::BeginPlay();
-}
-
-// Called every frame
-void ARoomSpawner::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-}
-
-// ============================================================================
-// EDITOR FUNCTIONS
-// ============================================================================
 
 #if WITH_EDITOR
+#pragma region Editor Functions
 void ARoomSpawner::GenerateRoomGrid()
 {
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE ROOM GRID"));
@@ -111,7 +97,9 @@ void ARoomSpawner::RefreshVisualization()
 
 	DebugHelpers->LogImportant(TEXT("Visualization refreshed. "));
 }
+#pragma endregion
 
+#pragma region Debug Functions
 void ARoomSpawner::ToggleCoordinates()
 {
 	DebugHelpers->bShowCoordinates = !DebugHelpers->bShowCoordinates;
@@ -172,12 +160,9 @@ void ARoomSpawner:: ToggleCellStates()
 	
 	RefreshVisualization();
 }
-
+#pragma endregion
 #endif // WITH_EDITOR
 
-// ============================================================================
-// INTERNAL HELPERS
-// ============================================================================
 
 bool ARoomSpawner::InitializeGenerator()
 {

@@ -24,34 +24,20 @@ public:
 	// Sets default values for this actor's properties
 	ARoomSpawner();
 
-protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
-
-public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
-	// ============================================================================
-	// COMPONENTS
-	// ============================================================================
-
+#pragma region Debug Components
 	// Debug visualization component
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UDebugHelpers* DebugHelpers;
+#pragma endregion 
 
-	// ============================================================================
-	// CONFIGURATION
-	// ============================================================================
+#pragma region Room Generation Properties
 
 	// Room configuration data asset
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Room Configuration")
 	URoomData* RoomData;
+#pragma endregion
 
-	// ============================================================================
-	// EDITOR FUNCTIONS (CallInEditor)
-	// ============================================================================
-
+#pragma region Editor Functions
 #if WITH_EDITOR
 	/**
 	 * Generate the room grid (visualization only at this stage)
@@ -60,21 +46,16 @@ public:
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void GenerateRoomGrid();
 
-	/**
-	 * Clear the room grid and all visualizations
-	 */
+	/* Clear the room grid and all visualizations */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void ClearRoomGrid();
 
-	/**
-	 * Refresh visualization (useful after changing debug settings)
-	 */
+	/* Refresh visualization (useful after changing debug settings) */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void RefreshVisualization();
 
-	/**
-	 * Toggle coordinate display
-	 */
+#pragma region Debug Functions
+	/* Toggle coordinate display */
 	UFUNCTION(CallInEditor, Category = "Room Generation|Debug")
 	void ToggleCoordinates();
 
@@ -95,26 +76,18 @@ public:
 	 */
 	UFUNCTION(CallInEditor, Category = "Room Generation|Debug")
 	void ToggleCellStates();
+#pragma endregion
+	
 #endif
-
-	// ============================================================================
-	// PUBLIC ACCESSORS
-	// ============================================================================
-
-	/**
-	 * Get the room generator instance
-	 */
+#pragma endregion
+	
+	/* Get the room generator instance  */
 	URoomGenerator* GetRoomGenerator() const { return RoomGenerator; }
 
-	/**
-	 * Check if room is generated
-	 */
+	/* Check if room is generated */
 	bool IsRoomGenerated() const { return bIsGenerated; }
 
 private:
-	// ============================================================================
-	// INTERNAL DATA
-	// ============================================================================
 
 	// Room generator instance (logic layer)
 	UPROPERTY()
@@ -123,22 +96,13 @@ private:
 	// Flag to track if room is generated
 	bool bIsGenerated;
 
-	// ============================================================================
-	// INTERNAL HELPERS
-	// ============================================================================
 
-	/**
-	 * Initialize the room generator
-	 */
+	/* Initialize the room generator */
 	bool InitializeGenerator();
 
-	/**
-	 * Update visualization based on current grid state
-	 */
+	/* Update visualization based on current grid state */
 	void UpdateVisualization();
 
-	/**
-	 * Log room statistics to output
-	 */
+	/* Log room statistics to output */
 	void LogRoomStatistics();
 };
