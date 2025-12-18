@@ -2,6 +2,7 @@
 
 #include "Utilities/Debugging/DebugHelpers.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/Engine.h"
 
 // Sets default values for this component's properties
 UDebugHelpers::UDebugHelpers()
@@ -11,7 +12,7 @@ UDebugHelpers::UDebugHelpers()
 }
 
 // Called when the game starts
-void UDebugHelpers::BeginPlay()
+void UDebugHelpers:: BeginPlay()
 {
 	Super::BeginPlay();
 }
@@ -28,7 +29,7 @@ void UDebugHelpers::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 
 bool UDebugHelpers::ShouldLog(EDebugLogLevel Level) const
 {
-	if (!bEnableDebug) return false;
+	if (! bEnableDebug) return false;
 	return static_cast<uint8>(Level) <= static_cast<uint8>(LogLevel);
 }
 
@@ -44,7 +45,7 @@ FString UDebugHelpers::GetCategoryPrefix() const
 
 void UDebugHelpers::Log(EDebugLogLevel Level, const FString& Message)
 {
-	if (!ShouldLog(Level)) return;
+	if (! ShouldLog(Level)) return;
 
 	FString FullMessage = FString::Printf(TEXT("%s %s"), *GetCategoryPrefix(), *Message);
 	UE_LOG(LogTemp, Log, TEXT("%s"), *FullMessage);
@@ -57,7 +58,7 @@ void UDebugHelpers::LogCritical(const FString& Message)
 
 void UDebugHelpers::LogImportant(const FString& Message)
 {
-	Log(EDebugLogLevel::Important, Message);
+	Log(EDebugLogLevel:: Important, Message);
 }
 
 void UDebugHelpers::LogVerbose(const FString& Message)
@@ -100,7 +101,7 @@ void UDebugHelpers::LogStatistic(const FString& Label, float Value)
 {
 	if (!ShouldLog(EDebugLogLevel::Important)) return;
 	
-	FString Message = FString::Printf(TEXT("%s: %.2f"), *Label, Value);
+	FString Message = FString::Printf(TEXT("%s:  %.2f"), *Label, Value);
 	Log(EDebugLogLevel::Important, Message);
 }
 
@@ -113,152 +114,185 @@ void UDebugHelpers::LogStatistic(const FString& Label, const FString& Value)
 }
 
 // ============================================================================
-// VISUALIZATION IMPLEMENTATION
+// GRID VISUALIZATION IMPLEMENTATION
 // ============================================================================
 
-void UDebugHelpers::DrawGrid(UWorld* World, const FVector& Origin, FIntPoint GridSize, float CellSize)
+void UDebugHelpers:: DrawGrid(FIntPoint GridSize, const TArray<EGridCellType>& CellStates, float CellSize, FVector OriginLocation)
 {
-	if (!bEnableDebug || !bShowGrid || !World) return;
+	if (!bEnableDebug || !GetWorld()) return;
 
-	const float Duration = DebugDrawDuration;
-
-	// Draw vertical lines (X-axis)
-	for (int32 X = 0; X <= GridSize.X; ++X)
+	// Draw grid outline
+	if (bShowGrid)
 	{
-		FVector Start = Origin + FVector(X * CellSize, 0, 0);
-		FVector End = Origin + FVector(X * CellSize, GridSize.Y * CellSize, 0);
-		DrawDebugLine(World, Start, End, GridColor, false, Duration, 0, 5.0f);
+		DrawGridOutline(GridSize, CellSize, OriginLocation);
 	}
 
-	// Draw horizontal lines (Y-axis)
-	for (int32 Y = 0; Y <= GridSize.Y; ++Y)
+	// Draw cell states
+	if (bShowCellStates && CellStates.Num() > 0)
 	{
-		FVector Start = Origin + FVector(0, Y * CellSize, 0);
-		FVector End = Origin + FVector(GridSize.X * CellSize, Y * CellSize, 0);
-		DrawDebugLine(World, Start, End, GridColor, false, Duration, 0, 5.0f);
+		DrawCellStates(GridSize, CellStates, CellSize, OriginLocation);
+	}
+
+	// Draw coordinates
+	if (bShowCoordinates)
+	{
+		DrawGridCoordinates(GridSize, CellSize, OriginLocation);
 	}
 }
 
-void UDebugHelpers::DrawCell(UWorld* World, const FVector& Origin, FIntPoint CellCoord, 
-                              float CellSize, FColor Color, float Thickness)
+void UDebugHelpers::DrawGridOutline(FIntPoint GridSize, float CellSize, FVector OriginLocation)
 {
-	if (!bEnableDebug || !bShowCellStates || !World) return;
+	if (!bEnableDebug || !GetWorld()) return;
 
-	FVector Center = Origin + FVector(
-		(CellCoord.X + 0.5f) * CellSize,
-		(CellCoord.Y + 0.5f) * CellSize,
-		20.0f  // Lift slightly above floor
-	);
-
-	FVector Extent = FVector(CellSize * 0.4f, CellSize * 0.4f, 10.0f);
-
-	DrawDebugBox(World, Center, Extent, FQuat::Identity, Color, false, 
-	             DebugDrawDuration, 0, Thickness);
-}
-
-void UDebugHelpers::DrawCellRegion(UWorld* World, const FVector& Origin, FIntPoint StartCell, 
-                                   FIntPoint Size, float CellSize, FColor Color, float Thickness)
-{
-	if (!bEnableDebug || !bShowForcedPlacements || !World) return;
-
-	// Draw outer boundary box
-	FVector Center = Origin + FVector(
-		(StartCell.X + Size.X * 0.5f) * CellSize,
-		(StartCell.Y + Size.Y * 0.5f) * CellSize,
-		25.0f
-	);
-
-	FVector OuterExtent = FVector(
-		Size.X * CellSize * 0.5f,
-		Size.Y * CellSize * 0.5f,
-		15.0f
-	);
-
-	DrawDebugBox(World, Center, OuterExtent, FQuat::Identity, Color, false, 
-	             DebugDrawDuration, 0, Thickness);
-
-	// Draw inner boundary box (slightly smaller for visual clarity)
-	FVector InnerExtent = FVector(
-		Size.X * CellSize * 0.48f,
-		Size.Y * CellSize * 0.48f,
-		12.0f
-	);
-
-	DrawDebugBox(World, Center, InnerExtent, FQuat::Identity, Color, false, 
-	             DebugDrawDuration, 0, Thickness - 1.0f);
-}
-
-void UDebugHelpers::DrawTextAtLocation(UWorld* World, const FVector& Location, 
-                                       const FString& Text, FColor Color, float Scale)
-{
-	if (!bEnableDebug || !World) return;
-
-	DrawDebugString(World, Location, Text, nullptr, Color, DebugDrawDuration, false, Scale);
-}
-
-void UDebugHelpers::ClearDebugDrawings(UWorld* World)
-{
-	if (!World) return;
+	UWorld* World = GetWorld();
 	
-	FlushPersistentDebugLines(World);
-	FlushDebugStrings(World);
+	// Calculate grid dimensions in world units
+	float GridWidth = GridSize.X * CellSize;
+	float GridHeight = GridSize.Y * CellSize;
+
+	// Draw outer boundary (4 lines forming rectangle)
+	// Bottom edge (South)
+	DrawDebugLine(World, OriginLocation, 
+		OriginLocation + FVector(GridWidth, 0, 0), 
+		GridColor, false, DebugDrawDuration, 0, LineThickness);
+
+	// Right edge (East)
+	DrawDebugLine(World, OriginLocation + FVector(GridWidth, 0, 0), 
+		OriginLocation + FVector(GridWidth, GridHeight, 0), 
+		GridColor, false, DebugDrawDuration, 0, LineThickness);
+
+	// Top edge (North)
+	DrawDebugLine(World, OriginLocation + FVector(GridWidth, GridHeight, 0), 
+		OriginLocation + FVector(0, GridHeight, 0), 
+		GridColor, false, DebugDrawDuration, 0, LineThickness);
+
+	// Left edge (West)
+	DrawDebugLine(World, OriginLocation + FVector(0, GridHeight, 0), 
+		OriginLocation, 
+		GridColor, false, DebugDrawDuration, 0, LineThickness);
+
+	// Draw internal grid lines
+	// Vertical lines (along X-axis)
+	for (int32 X = 1; X < GridSize.X; ++X)
+	{
+		FVector StartPos = OriginLocation + FVector(X * CellSize, 0, 0);
+		FVector EndPos = OriginLocation + FVector(X * CellSize, GridHeight, 0);
+		DrawDebugLine(World, StartPos, EndPos, GridColor, false, DebugDrawDuration, 0, LineThickness * 0.5f);
+	}
+
+	// Horizontal lines (along Y-axis)
+	for (int32 Y = 1; Y < GridSize.Y; ++Y)
+	{
+		FVector StartPos = OriginLocation + FVector(0, Y * CellSize, 0);
+		FVector EndPos = OriginLocation + FVector(GridWidth, Y * CellSize, 0);
+		DrawDebugLine(World, StartPos, EndPos, GridColor, false, DebugDrawDuration, 0, LineThickness * 0.5f);
+	}
 }
 
-// ============================================================================
-// STATISTICS IMPLEMENTATION
-// ============================================================================
-
-void UDebugHelpers::ResetStatistics()
+void UDebugHelpers:: DrawGridCoordinates(FIntPoint GridSize, float CellSize, FVector OriginLocation)
 {
-	TotalCellsGenerated = 0;
-	FloorTilesPlaced = 0;
-	WallSegmentsPlaced = 0;
-	DoorsPlaced = 0;
-	CeilingTilesPlaced = 0;
+	if (!bEnableDebug || !GetWorld()) return;
+
+	UWorld* World = GetWorld();
+
+	// Draw coordinate label at center of each cell
+	for (int32 X = 0; X < GridSize.X; ++X)
+	{
+		for (int32 Y = 0; Y < GridSize.Y; ++Y)
+		{
+			FIntPoint GridCoord(X, Y);
+			FVector CellCenter = GridToWorldPosition(GridCoord, CellSize, OriginLocation);
+			
+			// Offset text slightly above the grid
+			CellCenter. Z += CoordinateTextHeight;
+
+			// Format coordinate string
+			FString CoordText = FString::Printf(TEXT("(%d,%d)"), X, Y);
+
+			// Draw the text
+			DrawDebugString(World, CellCenter, CoordText, nullptr, CoordinateTextColor, 
+				DebugDrawDuration, false, CoordinateTextScale);
+		}
+	}
 }
 
-void UDebugHelpers::PrintStatistics()
+void UDebugHelpers::DrawCell(FIntPoint GridCoord, FColor Color, float CellSize, FVector OriginLocation)
 {
-	if (!bEnableDebug) return;
+	if (!bEnableDebug || !GetWorld()) return;
 
-	LogSectionHeader(TEXT("GENERATION STATISTICS"));
-	LogStatistic(TEXT("Total Cells Generated"), TotalCellsGenerated);
-	LogStatistic(TEXT("Floor Tiles Placed"), FloorTilesPlaced);
-	LogStatistic(TEXT("Wall Segments Placed"), WallSegmentsPlaced);
-	LogStatistic(TEXT("Doors Placed"), DoorsPlaced);
-	LogStatistic(TEXT("Ceiling Tiles Placed"), CeilingTilesPlaced);
-}
-
-// ============================================================================
-// PERFORMANCE TRACKING
-// ============================================================================
-
-void UDebugHelpers::StartTimer(const FString& SectionName)
-{
-	if (!bEnableDebug) return;
-
-	double CurrentTime = FPlatformTime::Seconds();
-	ActiveTimers.Add(SectionName, CurrentTime);
+	UWorld* World = GetWorld();
 	
-	LogVerbose(FString::Printf(TEXT("Started timer: %s"), *SectionName));
+	// Calculate cell center in world space
+	FVector CellCenter = GridToWorldPosition(GridCoord, CellSize, OriginLocation);
+	
+	// Calculate box extent (half of cell size)
+	FVector BoxExtent(CellSize * 0.5f, CellSize * 0.5f, 5.0f);
+
+	// Draw box at cell location
+	DrawDebugBox(World, CellCenter, BoxExtent, Color, false, DebugDrawDuration, 0, LineThickness);
 }
 
-void UDebugHelpers::EndTimer(const FString& SectionName)
+void UDebugHelpers::DrawCellStates(FIntPoint GridSize, const TArray<EGridCellType>& CellStates, float CellSize, FVector OriginLocation)
 {
-	if (!bEnableDebug) return;
+	if (!bEnableDebug || !GetWorld()) return;
 
-	if (ActiveTimers.Contains(SectionName))
+	// Validate array size
+	int32 ExpectedSize = GridSize.X * GridSize.Y;
+	if (CellStates.Num() != ExpectedSize)
 	{
-		double StartTime = ActiveTimers[SectionName];
-		double EndTime = FPlatformTime::Seconds();
-		double Duration = (EndTime - StartTime) * 1000.0; // Convert to milliseconds
+		LogCritical(FString::Printf(TEXT("DrawCellStates: CellStates array size mismatch!  Expected %d, got %d"), 
+			ExpectedSize, CellStates.Num()));
+		return;
+	}
 
-		LogImportant(FString::Printf(TEXT("%s completed in %.2f ms"), *SectionName, Duration));
-		
-		ActiveTimers.Remove(SectionName);
-	}
-	else
+	// Draw each cell with its state color
+	for (int32 X = 0; X < GridSize.X; ++X)
 	{
-		LogVerbose(FString::Printf(TEXT("Timer '%s' was not started"), *SectionName));
+		for (int32 Y = 0; Y < GridSize.Y; ++Y)
+		{
+			int32 Index = Y * GridSize.X + X;
+			EGridCellType CellType = CellStates[Index];
+			FColor CellColor = GetColorForCellType(CellType);
+			
+			DrawCell(FIntPoint(X, Y), CellColor, CellSize, OriginLocation);
+		}
 	}
+}
+
+void UDebugHelpers::ClearDebugDrawings()
+{
+	if (!GetWorld()) return;
+	
+	FlushPersistentDebugLines(GetWorld());
+	LogImportant(TEXT("Debug drawings cleared"));
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+FColor UDebugHelpers:: GetColorForCellType(EGridCellType CellType) const
+{
+	switch (CellType)
+	{
+		case EGridCellType::ECT_Empty: 
+			return EmptyCellColor;
+		case EGridCellType::ECT_FloorMesh:
+			return OccupiedCellColor;
+		case EGridCellType:: ECT_Wall:
+			return WallCellColor;
+		case EGridCellType::ECT_Doorway:
+			return DoorCellColor;
+		default:
+			return FColor::White;
+	}
+}
+
+FVector UDebugHelpers::GridToWorldPosition(FIntPoint GridCoord, float CellSize, FVector OriginLocation) const
+{
+	// Calculate center of cell
+	float CenterOffsetX = GridCoord.X * CellSize + (CellSize * 0.5f);
+	float CenterOffsetY = GridCoord.Y * CellSize + (CellSize * 0.5f);
+	
+	return OriginLocation + FVector(CenterOffsetX, CenterOffsetY, 0.0f);
 }

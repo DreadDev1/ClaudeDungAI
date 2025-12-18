@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Data/Grid/GridData.h"
 #include "DebugHelpers.generated.h"
 
 // Log verbosity levels
@@ -22,7 +23,7 @@ class CLAUDEDUNGAI_API UDebugHelpers : public UActorComponent
 {
 	GENERATED_BODY()
 
-public:
+public: 
 	// Sets default values for this component's properties
 	UDebugHelpers();
 
@@ -55,35 +56,57 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
 	bool bShowCellStates = true;
 
+	// Enable coordinate labels at each cell
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
+	bool bShowCoordinates = true;
+
 	// Enable forced placement visualization
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
 	bool bShowForcedPlacements = true;
 
 	// Duration for debug drawings (in seconds, -1 for permanent)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
-	float DebugDrawDuration = 5.0f;
+	float DebugDrawDuration = -1.0f;
+
+	// Thickness of debug lines
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
+	float LineThickness = 2.0f;
+
+	// Scale of coordinate text
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
+	float CoordinateTextScale = 1.5f;
+
+	// Height offset for coordinate text above grid
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
+	float CoordinateTextHeight = 10.0f;
 
 	// ============================================================================
 	// COLOR SCHEME
 	// ============================================================================
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Colors")
-	FColor GridColor = FColor::Green;
+	FColor GridColor = FColor:: White;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Colors")
-	FColor EmptyCellColor = FColor::Blue;
+	FColor EmptyCellColor = FColor::Green;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Colors")
 	FColor OccupiedCellColor = FColor::Red;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Colors")
+	FColor UnoccupiedCellColor = FColor::Blue;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Colors")
 	FColor WallCellColor = FColor::Orange;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Colors")
-	FColor DoorCellColor = FColor::Cyan;
+	FColor DoorCellColor = FColor:: Cyan;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Colors")
-	FColor ForcedPlacementColor = FColor::Magenta;
+	FColor ForcedPlacementColor = FColor:: Magenta;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Colors")
+	FColor CoordinateTextColor = FColor:: White;
 
 	// ============================================================================
 	// LOGGING API
@@ -104,78 +127,73 @@ public:
 	// Log a section header (for visual separation)
 	void LogSectionHeader(const FString& Title);
 
-	// Log a statistic (key-value pair)
+	// Log statistics
 	void LogStatistic(const FString& Label, int32 Value);
 	void LogStatistic(const FString& Label, float Value);
 	void LogStatistic(const FString& Label, const FString& Value);
 
 	// ============================================================================
-	// VISUALIZATION API
+	// GRID VISUALIZATION API
 	// ============================================================================
 
-	// Draw grid lines
-	void DrawGrid(UWorld* World, const FVector& Origin, FIntPoint GridSize, float CellSize);
+	/**
+	 * Draw the entire grid with cell states and coordinates
+	 * @param GridSize - The size of the grid in cells (X, Y)
+	 * @param CellStates - Array of cell states (Empty, Occupied, Unoccupied, Wall, Doorway)
+	 * @param CellSize - Size of each cell in cm (default 100.0)
+	 * @param OriginLocation - World location of grid origin (0,0)
+	 */
+	void DrawGrid(FIntPoint GridSize, const TArray<EGridCellType>& CellStates, float CellSize = CELL_SIZE, FVector OriginLocation = FVector::ZeroVector);
 
-	// Draw a single cell box
-	void DrawCell(UWorld* World, const FVector& Origin, FIntPoint CellCoord, float CellSize, 
-	              FColor Color, float Thickness = 3.0f);
+	/**
+	 * Draw grid outline only (no cell states)
+	 * @param GridSize - The size of the grid in cells (X, Y)
+	 * @param CellSize - Size of each cell in cm (default 100.0)
+	 * @param OriginLocation - World location of grid origin (0,0)
+	 */
+	void DrawGridOutline(FIntPoint GridSize, float CellSize = CELL_SIZE, FVector OriginLocation = FVector::ZeroVector);
 
-	// Draw a region of cells (for forced placements, empty regions, etc.)
-	void DrawCellRegion(UWorld* World, const FVector& Origin, FIntPoint StartCell, 
-	                    FIntPoint Size, float CellSize, FColor Color, float Thickness = 3.0f);
+	/**
+	 * Draw coordinate labels at each cell center
+	 * @param GridSize - The size of the grid in cells (X, Y)
+	 * @param CellSize - Size of each cell in cm (default 100.0)
+	 * @param OriginLocation - World location of grid origin (0,0)
+	 */
+	void DrawGridCoordinates(FIntPoint GridSize, float CellSize = CELL_SIZE, FVector OriginLocation = FVector::ZeroVector);
 
-	// Draw text at world location (for cell coordinates, labels, etc.)
-	void DrawTextAtLocation(UWorld* World, const FVector& Location, const FString& Text, 
-	                        FColor Color = FColor::White, float Scale = 1.0f);
+	/**
+	 * Draw a single cell with specified color
+	 * @param GridCoord - Grid coordinates (X, Y)
+	 * @param Color - Color to draw the cell
+	 * @param CellSize - Size of each cell in cm (default 100.0)
+	 * @param OriginLocation - World location of grid origin (0,0)
+	 */
+	void DrawCell(FIntPoint GridCoord, FColor Color, float CellSize = CELL_SIZE, FVector OriginLocation = FVector::ZeroVector);
 
-	// Clear all persistent debug drawings
-	void ClearDebugDrawings(UWorld* World);
+	/**
+	 * Draw cell states for the entire grid
+	 * @param GridSize - The size of the grid in cells (X, Y)
+	 * @param CellStates - Array of cell states
+	 * @param CellSize - Size of each cell in cm (default 100.0)
+	 * @param OriginLocation - World location of grid origin (0,0)
+	 */
+	void DrawCellStates(FIntPoint GridSize, const TArray<EGridCellType>& CellStates, float CellSize = CELL_SIZE, FVector OriginLocation = FVector::ZeroVector);
 
-	// ============================================================================
-	// STATISTICS TRACKING
-	// ============================================================================
-
-	// Track generation statistics
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Debug Info|Statistics")
-	int32 TotalCellsGenerated = 0;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Debug Info|Statistics")
-	int32 FloorTilesPlaced = 0;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Debug Info|Statistics")
-	int32 WallSegmentsPlaced = 0;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Debug Info|Statistics")
-	int32 DoorsPlaced = 0;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Debug Info|Statistics")
-	int32 CeilingTilesPlaced = 0;
-
-	// Reset statistics
-	UFUNCTION(BlueprintCallable, Category = "Debug")
-	void ResetStatistics();
-
-	// Print current statistics to log
-	UFUNCTION(BlueprintCallable, Category = "Debug")
-	void PrintStatistics();
-
-	// ============================================================================
-	// PERFORMANCE TRACKING
-	// ============================================================================
-
-	// Start timing a section
-	void StartTimer(const FString& SectionName);
-
-	// End timing a section and log duration
-	void EndTimer(const FString& SectionName);
+	/**
+	 * Clear all debug drawings (if using non-persistent draws)
+	 */
+	void ClearDebugDrawings();
 
 private:
-	// Timer storage
-	TMap<FString, double> ActiveTimers;
-	
-	// Check if logging is enabled for specified level
+	// Helper to check if logging should occur
 	bool ShouldLog(EDebugLogLevel Level) const;
-	
-	// Get category prefix for log messages
+
+	// Helper to get category prefix
 	FString GetCategoryPrefix() const;
+
+	// Helper to get color for cell type
+	FColor GetColorForCellType(EGridCellType CellType) const;
+
+	// Helper to convert grid coordinates to world position (center of cell)
+	FVector GridToWorldPosition(FIntPoint GridCoord, float CellSize, FVector OriginLocation) const;
 };
