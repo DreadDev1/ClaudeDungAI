@@ -18,6 +18,10 @@ enum class EDebugLogLevel : uint8
 	Everything = 4 UMETA(DisplayName = "Everything")
 };
 
+class UTextRenderComponent;
+
+// NEW:  Delegate for requesting text render components from owner
+DECLARE_DELEGATE_RetVal_FourParams(UTextRenderComponent*, FOnCreateTextComponent, FVector /*WorldPosition*/, FString /*Text*/, FColor /*Color*/, float /*Scale*/);
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class CLAUDEDUNGAI_API UDebugHelpers : public UActorComponent
 {
@@ -57,7 +61,7 @@ public:
 	bool bShowCellStates = true;
 
 	// Enable coordinate labels at each cell
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
+	UPROPERTY(BlueprintReadWrite, Category = "Debug Settings|Visualization")
 	bool bShowCoordinates = true;
 
 	// Enable forced placement visualization
@@ -79,6 +83,13 @@ public:
 	// Height offset for coordinate text above grid
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
 	float CoordinateTextHeight = 10.0f;
+	
+	// NEW: Delegate that owner (RoomSpawner) will bind to
+	FOnCreateTextComponent OnCreateTextComponent;
+
+	// NEW: Array to track created text components
+	UPROPERTY()
+	TArray<UTextRenderComponent*> CoordinateTextComponents;
 
 	// ============================================================================
 	// COLOR SCHEME
@@ -160,7 +171,8 @@ public:
 	 * @param OriginLocation - World location of grid origin (0,0)
 	 */
 	void DrawGridCoordinates(FIntPoint GridSize, float CellSize = CELL_SIZE, FVector OriginLocation = FVector::ZeroVector);
-
+	void DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, float CellSize, FVector OriginLocation);
+	void ClearCoordinateTextComponents();
 	/**
 	 * Draw a single cell with specified color
 	 * @param GridCoord - Grid coordinates (X, Y)

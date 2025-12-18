@@ -2,6 +2,7 @@
 
 #include "Utilities/Debugging/DebugHelpers.h"
 #include "DrawDebugHelpers.h"
+#include "Components/TextRenderComponent.h"
 #include "Engine/Engine.h"
 
 // Sets default values for this component's properties
@@ -133,10 +134,24 @@ void UDebugHelpers:: DrawGrid(FIntPoint GridSize, const TArray<EGridCellType>& C
 		DrawCellStates(GridSize, CellStates, CellSize, OriginLocation);
 	}
 
-	// Draw coordinates
+	// Draw coordinates using TextRenderComponents (editor-friendly)
 	if (bShowCoordinates)
 	{
-		DrawGridCoordinates(GridSize, CellSize, OriginLocation);
+		// Use TextComponents if delegate is bound, otherwise fall back to DrawDebugString
+		if (OnCreateTextComponent.IsBound())
+		{
+			DrawGridCoordinatesWithTextComponents(GridSize, CellSize, OriginLocation);
+		}
+		else
+		{
+			// Fallback to DrawDebugString (for runtime or if not bound)
+			DrawGridCoordinates(GridSize, CellSize, OriginLocation);
+		}
+	}
+	else
+	{
+		// Clear text components if coordinates are hidden
+		ClearCoordinateTextComponents();
 	}
 }
 
@@ -194,9 +209,13 @@ void UDebugHelpers:: DrawGridCoordinates(FIntPoint GridSize, float CellSize, FVe
 	if (!bEnableDebug || !GetWorld()) return;
 
 	UWorld* World = GetWorld();
+	
+	// DEBUG: Log that we're drawing coordinates
+	UE_LOG(LogTemp, Warning, TEXT("DrawGridCoordinates called:  GridSize=(%d,%d), Origin=%s, Scale=%.2f, Height=%.2f"), 
+		GridSize.X, GridSize.Y, *OriginLocation.ToString(), CoordinateTextScale, CoordinateTextHeight);
 
 	// Draw coordinate label at center of each cell
-	for (int32 X = 0; X < GridSize.X; ++X)
+	for (int32 X = 0; X < GridSize. X; ++X)
 	{
 		for (int32 Y = 0; Y < GridSize.Y; ++Y)
 		{
@@ -209,11 +228,91 @@ void UDebugHelpers:: DrawGridCoordinates(FIntPoint GridSize, float CellSize, FVe
 			// Format coordinate string
 			FString CoordText = FString::Printf(TEXT("(%d,%d)"), X, Y);
 
+			// DEBUG: Log first coordinate position
+			if (X == 0 && Y == 0)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("First coordinate '%s' at world position:  %s"), 
+					*CoordText, *CellCenter. ToString());
+			}
+
 			// Draw the text
-			DrawDebugString(World, CellCenter, CoordText, nullptr, CoordinateTextColor, 
-				DebugDrawDuration, false, CoordinateTextScale);
+			DrawDebugString(
+				World,
+				CellCenter,
+				CoordText,
+				nullptr,
+				CoordinateTextColor,
+				DebugDrawDuration,
+				true,                       // bDrawShadow = true
+				CoordinateTextScale
+			);
 		}
 	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("DrawGridCoordinates complete:  Drew %d coordinate labels"), GridSize.X * GridSize.Y);
+}
+
+void UDebugHelpers::DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, float CellSize, FVector OriginLocation)
+{
+	if (!bEnableDebug) return;
+
+	// Check if delegate is bound (RoomSpawner must bind this)
+	if (!OnCreateTextComponent.IsBound())
+	{
+		LogCritical(TEXT("DrawGridCoordinatesWithTextComponents:  OnCreateTextComponent delegate not bound!"));
+		return;
+	}
+
+	// Clear existing text components first
+	ClearCoordinateTextComponents();
+
+	LogVerbose(FString::Printf(TEXT("Creating coordinate text components for %dx%d grid"), GridSize.X, GridSize. Y));
+
+	// Create text component for each grid cell
+	for (int32 X = 0; X < GridSize.X; ++X)
+	{
+		for (int32 Y = 0; Y < GridSize.Y; ++Y)
+		{
+			FIntPoint GridCoord(X, Y);
+			FVector CellCenter = GridToWorldPosition(GridCoord, CellSize, OriginLocation);
+			
+			// Offset text above the grid
+			CellCenter.Z += CoordinateTextHeight;
+
+			// Format coordinate string
+			FString CoordText = FString::Printf(TEXT("(%d,%d)"), X, Y);
+
+			// Request text component from owner via delegate
+			UTextRenderComponent* TextComp = OnCreateTextComponent.Execute(
+				CellCenter, 
+				CoordText, 
+				CoordinateTextColor, 
+				CoordinateTextScale
+			);
+
+			if (TextComp)
+			{
+				CoordinateTextComponents.Add(TextComp);
+			}
+		}
+	}
+
+	LogImportant(FString::Printf(TEXT("Created %d coordinate text components"), CoordinateTextComponents. Num()));
+}
+
+void UDebugHelpers::ClearCoordinateTextComponents()
+{
+	// Destroy all text components
+	for (UTextRenderComponent* TextComp : CoordinateTextComponents)
+	{
+		if (TextComp && TextComp->IsValidLowLevel())
+		{
+			TextComp->DestroyComponent();
+		}
+	}
+
+	CoordinateTextComponents.Empty();
+	LogVerbose(TEXT("Cleared coordinate text components"));
 }
 
 void UDebugHelpers::DrawCell(FIntPoint GridCoord, FColor Color, float CellSize, FVector OriginLocation)

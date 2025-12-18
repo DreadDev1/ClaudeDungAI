@@ -9,6 +9,7 @@
 #include "Data/Room/RoomData.h"
 #include "RoomSpawner.generated.h"
 
+class UTextRenderComponent;
 /**
  * RoomSpawner - Actor responsible for spawning and visualizing rooms in the level
  * Holds RoomGenerator for logic and DebugHelpers for visualization
@@ -77,6 +78,12 @@ public:
 	UFUNCTION(CallInEditor, Category = "Room Generation|Debug")
 	void ToggleCoordinates();
 
+	/**
+	 * Create a text render component at specified world location
+	 * Called by DebugHelpers via delegate
+	 */
+	UTextRenderComponent* CreateTextRenderComponent(FVector WorldPosition, FString Text, FColor Color, float Scale);
+	
 	/**
 	 * Toggle grid outline display
 	 */

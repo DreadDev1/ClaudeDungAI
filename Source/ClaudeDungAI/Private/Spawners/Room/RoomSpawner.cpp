@@ -1,6 +1,8 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Spawners/Room/RoomSpawner.h"
+
+#include "Components/TextRenderComponent.h"
 #include "Generators/Room/RoomGenerator.h"
 
 // Sets default values
@@ -12,6 +14,8 @@ ARoomSpawner::ARoomSpawner()
 	// Create debug helpers component
 	DebugHelpers = CreateDefaultSubobject<UDebugHelpers>(TEXT("DebugHelpers"));
 
+	// NEW: Bind delegate so DebugHelpers can request text components
+	DebugHelpers->OnCreateTextComponent.BindUObject(this, &ARoomSpawner::CreateTextRenderComponent);
 	// Initialize flags
 	bIsGenerated = false;
 }
@@ -79,6 +83,9 @@ void ARoomSpawner::ClearRoomGrid()
 	RoomGenerator->ClearGrid();
 	bIsGenerated = false;
 
+	// Clear coordinate text components (DebugHelpers manages them)
+	DebugHelpers->ClearCoordinateTextComponents();
+	
 	// Clear debug drawings
 	DebugHelpers->ClearDebugDrawings();
 
@@ -111,6 +118,40 @@ void ARoomSpawner::ToggleCoordinates()
 		DebugHelpers->bShowCoordinates ? TEXT("ON") : TEXT("OFF")));
 	
 	RefreshVisualization();
+}
+
+UTextRenderComponent* ARoomSpawner::CreateTextRenderComponent(FVector WorldPosition, FString Text, FColor Color, float Scale)
+{
+	// Create new text render component
+	UTextRenderComponent* TextComp = NewObject<UTextRenderComponent>(this);
+	
+	if (! TextComp)
+	{
+		return nullptr;
+	}
+
+	// Register and attach component
+	TextComp->RegisterComponent();
+	TextComp->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
+
+	// Set text properties
+	TextComp->SetText(FText::FromString(Text));
+	TextComp->SetWorldSize(Scale * 10.0f); // Scale for visibility
+	TextComp->SetTextRenderColor(Color);
+	TextComp->SetHorizontalAlignment(EHTA_Center);
+	TextComp->SetVerticalAlignment(EVRTA_TextCenter);
+	
+	// Set world location
+	TextComp->SetWorldLocation(WorldPosition);
+	
+	// Rotate to face upward (readable from above in editor)
+	TextComp->SetWorldRotation(FRotator(45.0f, 180.0f, 0.0f));
+
+	// Make visible in editor
+	TextComp->SetVisibility(true);
+	TextComp->SetHiddenInGame(false); // Show in PIE too
+
+	return TextComp;
 }
 
 void ARoomSpawner:: ToggleGrid()
