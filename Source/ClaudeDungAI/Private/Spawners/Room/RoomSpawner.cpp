@@ -37,7 +37,6 @@ void ARoomSpawner::Tick(float DeltaTime)
 // ============================================================================
 
 #if WITH_EDITOR
-
 void ARoomSpawner::GenerateRoomGrid()
 {
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE ROOM GRID"));
@@ -67,6 +66,8 @@ void ARoomSpawner::GenerateRoomGrid()
 	UpdateVisualization();
 
 	DebugHelpers->LogImportant(TEXT("Room grid generated successfully!"));
+	// End header
+	DebugHelpers->LogSectionHeader(TEXT("GENERATE ROOM GRID"));
 }
 
 void ARoomSpawner::ClearRoomGrid()
