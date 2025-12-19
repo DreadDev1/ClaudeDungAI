@@ -5,257 +5,157 @@
 #include "Components/TextRenderComponent.h"
 #include "Engine/Engine.h"
 
-// Sets default values for this component's properties
 UDebugHelpers::UDebugHelpers()
 {
-	// This component doesn't need to tick every frame
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-// Called when the game starts
-void UDebugHelpers:: BeginPlay()
-{
-	Super::BeginPlay();
-}
-
-// Called every frame
-void UDebugHelpers::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-}
-
-// ============================================================================
-// LOGGING IMPLEMENTATION
-// ============================================================================
-
-bool UDebugHelpers::ShouldLog(EDebugLogLevel Level) const
-{
-	if (! bEnableDebug) return false;
-	return static_cast<uint8>(Level) <= static_cast<uint8>(LogLevel);
-}
-
-FString UDebugHelpers::GetCategoryPrefix() const
-{
-	AActor* Owner = GetOwner();
-	if (Owner)
-	{
-		return FString::Printf(TEXT("[%s]"), *Owner->GetName());
-	}
-	return TEXT("[DebugHelpers]");
-}
-
-void UDebugHelpers::Log(EDebugLogLevel Level, const FString& Message)
-{
-	if (! ShouldLog(Level)) return;
-
-	FString FullMessage = FString::Printf(TEXT("%s %s"), *GetCategoryPrefix(), *Message);
-	UE_LOG(LogTemp, Log, TEXT("%s"), *FullMessage);
-}
-
-void UDebugHelpers::LogCritical(const FString& Message)
-{
-	Log(EDebugLogLevel::Critical, Message);
-}
-
-void UDebugHelpers::LogImportant(const FString& Message)
-{
-	Log(EDebugLogLevel:: Important, Message);
-}
-
-void UDebugHelpers::LogVerbose(const FString& Message)
-{
-	Log(EDebugLogLevel::Verbose, Message);
-}
-
-void UDebugHelpers::LogEverything(const FString& Message)
-{
-	Log(EDebugLogLevel::Everything, Message);
-}
-
-void UDebugHelpers::LogWithCategory(EDebugLogLevel Level, const FString& Category, const FString& Message)
-{
-	if (!ShouldLog(Level)) return;
-
-	FString FullMessage = FString::Printf(TEXT("%s [%s] %s"), *GetCategoryPrefix(), *Category, *Message);
-	UE_LOG(LogTemp, Log, TEXT("%s"), *FullMessage);
-}
-
-void UDebugHelpers::LogSectionHeader(const FString& Title)
-{
-	if (!ShouldLog(EDebugLogLevel::Important)) return;
-
-	// Just log the title without the ======== lines
-	FString FullMessage = FString::Printf(TEXT("%s %s"), *GetCategoryPrefix(), *Title);
-	UE_LOG(LogTemp, Warning, TEXT("%s"), *FullMessage);
-}
-
-void UDebugHelpers::LogStatistic(const FString& Label, int32 Value)
-{
-	if (!ShouldLog(EDebugLogLevel::Important)) return;
-	
-	FString Message = FString::Printf(TEXT("%s: %d"), *Label, Value);
-	Log(EDebugLogLevel::Important, Message);
-}
-
-void UDebugHelpers::LogStatistic(const FString& Label, float Value)
-{
-	if (!ShouldLog(EDebugLogLevel::Important)) return;
-	
-	FString Message = FString::Printf(TEXT("%s:  %.2f"), *Label, Value);
-	Log(EDebugLogLevel::Important, Message);
-}
-
-void UDebugHelpers::LogStatistic(const FString& Label, const FString& Value)
-{
-	if (!ShouldLog(EDebugLogLevel::Important)) return;
-	
-	FString Message = FString::Printf(TEXT("%s: %s"), *Label, *Value);
-	Log(EDebugLogLevel::Important, Message);
-}
-
-// ============================================================================
-// GRID VISUALIZATION IMPLEMENTATION
-// ============================================================================
-
+#pragma region Debug Drawing API
 void UDebugHelpers:: DrawGrid(FIntPoint GridSize, const TArray<EGridCellType>& CellStates, float CellSize, FVector OriginLocation)
 {
-	if (!bEnableDebug || !GetWorld()) return;
+	if (!bEnableDebug) return;
 
-	// Draw grid outline
+	AActor* Owner = GetOwner();
+	if (!Owner) return;
+
+	// Cache owner name for logging
+	OwnerActorName = Owner->GetName();
+
+	// Draw grid lines
 	if (bShowGrid)
 	{
-		DrawGridOutline(GridSize, CellSize, OriginLocation);
+		DrawGridLines(GridSize, CellSize, OriginLocation);
 	}
 
-	// Draw cell states
-	if (bShowCellStates && CellStates.Num() > 0)
+	// Draw cell states (red/blue boxes)
+	if (bShowCellStates)
 	{
 		DrawCellStates(GridSize, CellStates, CellSize, OriginLocation);
 	}
 
-	// Draw coordinates using TextRenderComponents (editor-friendly)
+	// Draw coordinates
 	if (bShowCoordinates)
 	{
-		// Use TextComponents if delegate is bound, otherwise fall back to DrawDebugString
-		if (OnCreateTextComponent.IsBound())
-		{
-			DrawGridCoordinatesWithTextComponents(GridSize, CellSize, OriginLocation);
-		}
-		else
-		{
-			// Fallback to DrawDebugString (for runtime or if not bound)
-			DrawGridCoordinates(GridSize, CellSize, OriginLocation);
-		}
-	}
-	else
-	{
-		// Clear text components if coordinates are hidden
-		ClearCoordinateTextComponents();
+		DrawGridCoordinatesWithTextComponents(GridSize, CellSize, OriginLocation);
 	}
 }
 
-void UDebugHelpers::DrawGridOutline(FIntPoint GridSize, float CellSize, FVector OriginLocation)
+void UDebugHelpers::DrawForcedEmptyRegions(const TArray<FForcedEmptyRegion>& Regions, FIntPoint GridSize, float CellSize, FVector OriginLocation)
 {
-	if (!bEnableDebug || !GetWorld()) return;
+	if (!bEnableDebug || ! bShowForcedEmptyRegions) return;
 
 	UWorld* World = GetWorld();
-	
-	// Calculate grid dimensions in world units
-	float GridWidth = GridSize.X * CellSize;
-	float GridHeight = GridSize.Y * CellSize;
+	if (!World) return;
 
-	// Draw outer boundary (4 lines forming rectangle)
-	// Bottom edge (South)
-	DrawDebugLine(World, OriginLocation, 
-		OriginLocation + FVector(GridWidth, 0, 0), 
-		GridColor, false, DebugDrawDuration, 0, LineThickness);
-
-	// Right edge (East)
-	DrawDebugLine(World, OriginLocation + FVector(GridWidth, 0, 0), 
-		OriginLocation + FVector(GridWidth, GridHeight, 0), 
-		GridColor, false, DebugDrawDuration, 0, LineThickness);
-
-	// Top edge (North)
-	DrawDebugLine(World, OriginLocation + FVector(GridWidth, GridHeight, 0), 
-		OriginLocation + FVector(0, GridHeight, 0), 
-		GridColor, false, DebugDrawDuration, 0, LineThickness);
-
-	// Left edge (West)
-	DrawDebugLine(World, OriginLocation + FVector(0, GridHeight, 0), 
-		OriginLocation, 
-		GridColor, false, DebugDrawDuration, 0, LineThickness);
-
-	// Draw internal grid lines
-	// Vertical lines (along X-axis)
-	for (int32 X = 1; X < GridSize.X; ++X)
+	for (const FForcedEmptyRegion& Region : Regions)
 	{
-		FVector StartPos = OriginLocation + FVector(X * CellSize, 0, 0);
-		FVector EndPos = OriginLocation + FVector(X * CellSize, GridHeight, 0);
-		DrawDebugLine(World, StartPos, EndPos, GridColor, false, DebugDrawDuration, 0, LineThickness * 0.5f);
-	}
+		// Calculate bounding box (handles any corner order)
+		int32 MinX = FMath::Min(Region.StartCell.X, Region.EndCell. X);
+		int32 MaxX = FMath::Max(Region.StartCell.X, Region.EndCell.X);
+		int32 MinY = FMath::Min(Region.StartCell.Y, Region.EndCell. Y);
+		int32 MaxY = FMath::Max(Region.StartCell.Y, Region.EndCell.Y);
 
-	// Horizontal lines (along Y-axis)
-	for (int32 Y = 1; Y < GridSize.Y; ++Y)
-	{
-		FVector StartPos = OriginLocation + FVector(0, Y * CellSize, 0);
-		FVector EndPos = OriginLocation + FVector(GridWidth, Y * CellSize, 0);
-		DrawDebugLine(World, StartPos, EndPos, GridColor, false, DebugDrawDuration, 0, LineThickness * 0.5f);
-	}
-}
+		// Clamp to valid grid bounds
+		MinX = FMath::Clamp(MinX, 0, GridSize.X - 1);
+		MaxX = FMath::Clamp(MaxX, 0, GridSize.X - 1);
+		MinY = FMath:: Clamp(MinY, 0, GridSize.Y - 1);
+		MaxY = FMath::Clamp(MaxY, 0, GridSize. Y - 1);
 
-void UDebugHelpers:: DrawGridCoordinates(FIntPoint GridSize, float CellSize, FVector OriginLocation)
-{
-	if (!bEnableDebug || !GetWorld()) return;
-
-	UWorld* World = GetWorld();
-	
-	// DEBUG: Log that we're drawing coordinates
-	UE_LOG(LogTemp, Warning, TEXT("DrawGridCoordinates called:  GridSize=(%d,%d), Origin=%s, Scale=%.2f, Height=%.2f"), 
-		GridSize.X, GridSize.Y, *OriginLocation.ToString(), CoordinateTextScale, CoordinateTextHeight);
-
-	// Draw coordinate label at center of each cell
-	for (int32 X = 0; X < GridSize. X; ++X)
-	{
-		for (int32 Y = 0; Y < GridSize.Y; ++Y)
+		// Draw each cell in the region
+		for (int32 Y = MinY; Y <= MaxY; ++Y)
 		{
-			FIntPoint GridCoord(X, Y);
-			FVector CellCenter = GridToWorldPosition(GridCoord, CellSize, OriginLocation);
-			
-			// Offset text slightly above the grid
-			CellCenter. Z += CoordinateTextHeight;
-
-			// Format coordinate string
-			FString CoordText = FString::Printf(TEXT("(%d,%d)"), X, Y);
-
-			// DEBUG: Log first coordinate position
-			if (X == 0 && Y == 0)
+			for (int32 X = MinX; X <= MaxX; ++X)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("First coordinate '%s' at world position:  %s"), 
-					*CoordText, *CellCenter. ToString());
+				DrawCellBox(FIntPoint(X, Y), ForcedEmptyRegionColor, CellSize, OriginLocation, ForcedEmptyZOffset);
 			}
-
-			// Draw the text
-			DrawDebugString(
-				World,
-				CellCenter,
-				CoordText,
-				nullptr,
-				CoordinateTextColor,
-				DebugDrawDuration,
-				true,                       // bDrawShadow = true
-				CoordinateTextScale
-			);
 		}
 	}
-	
-	UE_LOG(LogTemp, Warning, TEXT("DrawGridCoordinates complete:  Drew %d coordinate labels"), GridSize.X * GridSize.Y);
+
+	LogVerbose(FString::Printf(TEXT("Drew %d forced empty regions"), Regions.Num()));
+}
+
+void UDebugHelpers::DrawForcedEmptyCells(const TArray<FIntPoint>& Cells, FIntPoint GridSize, float CellSize, FVector OriginLocation)
+{
+	if (!bEnableDebug || !bShowForcedEmptyCells) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	for (const FIntPoint& Cell :  Cells)
+	{
+		// Validate cell is within grid bounds
+		if (Cell.X >= 0 && Cell.X < GridSize.X && Cell.Y >= 0 && Cell.Y < GridSize.Y)
+		{
+			// Inner cyan box
+			DrawCellBox(Cell, ForcedEmptyRegionColor, CellSize, OriginLocation, ForcedEmptyZOffset);
+
+			// Outer orange border to distinguish from region cells
+			FVector Center = GridToWorldPosition(Cell, CellSize, OriginLocation);
+			Center.Z += ForcedEmptyZOffset;
+
+			FVector OuterExtent(CellSize / 2.0f, CellSize / 2.0f, 27.0f);
+			DrawDebugBox(World, Center, OuterExtent, FQuat::Identity, ForcedEmptyCellBorderColor, false, GridLineLifetime, 0, 2.0f);
+		}
+	}
+
+	LogVerbose(FString::Printf(TEXT("Drew %d forced empty cells"), Cells.Num()));
+}
+
+void UDebugHelpers::DrawGridLines(FIntPoint GridSize, float CellSize, FVector OriginLocation)
+{
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	// Draw X-axis lines (vertical lines in world)
+	for (int32 X = 0; X <= GridSize.X; ++X)
+	{
+		FVector Start = OriginLocation + FVector(X * CellSize, 0.0f, 0.0f);
+		FVector End = OriginLocation + FVector(X * CellSize, GridSize.Y * CellSize, 0.0f);
+		DrawDebugLine(World, Start, End, GridColor, false, GridLineLifetime, 0, GridLineThickness);
+	}
+
+	// Draw Y-axis lines (horizontal lines in world)
+	for (int32 Y = 0; Y <= GridSize.Y; ++Y)
+	{
+		FVector Start = OriginLocation + FVector(0.0f, Y * CellSize, 0.0f);
+		FVector End = OriginLocation + FVector(GridSize.X * CellSize, Y * CellSize, 0.0f);
+		DrawDebugLine(World, Start, End, GridColor, false, GridLineLifetime, 0, GridLineThickness);
+	}
+}
+
+void UDebugHelpers::DrawCellStates(FIntPoint GridSize, const TArray<EGridCellType>& CellStates, float CellSize, FVector OriginLocation)
+{
+	for (int32 Y = 0; Y < GridSize.Y; ++Y)
+	{
+		for (int32 X = 0; X < GridSize.X; ++X)
+		{
+			int32 Index = Y * GridSize.X + X;
+			if (CellStates. IsValidIndex(Index))
+			{
+				FColor BoxColor = GetColorForCellType(CellStates[Index]);
+				DrawCellBox(FIntPoint(X, Y), BoxColor, CellSize, OriginLocation, CellBoxZOffset);
+			}
+		}
+	}
+}
+
+void UDebugHelpers::DrawCellBox(FIntPoint GridCoord, FColor Color, float CellSize, FVector OriginLocation, float ZOffset)
+{
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	// Center of the cell
+	FVector Center = GridToWorldPosition(GridCoord, CellSize, OriginLocation);
+	Center.Z += ZOffset;
+
+	// Size of the box (half extent)
+	FVector Extent(CellSize / 2.2f, CellSize / 2.2f, ZOffset * 0.8f);
+
+	DrawDebugBox(World, Center, Extent, FQuat::Identity, Color, false, GridLineLifetime, 0, CellBoxThickness);
 }
 
 void UDebugHelpers::DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, float CellSize, FVector OriginLocation)
 {
-	if (!bEnableDebug) return;
-
-	// Check if delegate is bound (RoomSpawner must bind this)
 	if (!OnCreateTextComponent.IsBound())
 	{
 		LogCritical(TEXT("DrawGridCoordinatesWithTextComponents:  OnCreateTextComponent delegate not bound!"));
@@ -265,7 +165,7 @@ void UDebugHelpers::DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, fl
 	// Clear existing text components first
 	ClearCoordinateTextComponents();
 
-	LogVerbose(FString::Printf(TEXT("Creating coordinate text components for %dx%d grid"), GridSize.X, GridSize. Y));
+	LogVerbose(FString::Printf(TEXT("Creating coordinate text components for %dx%d grid"), GridSize.X, GridSize.Y));
 
 	// Create text component for each grid cell
 	for (int32 X = 0; X < GridSize.X; ++X)
@@ -274,8 +174,8 @@ void UDebugHelpers::DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, fl
 		{
 			FIntPoint GridCoord(X, Y);
 			FVector CellCenter = GridToWorldPosition(GridCoord, CellSize, OriginLocation);
-			
-			// Offset text above the grid
+
+			// Offset text above the grid using CoordinateTextHeight
 			CellCenter.Z += CoordinateTextHeight;
 
 			// Format coordinate string
@@ -283,9 +183,9 @@ void UDebugHelpers::DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, fl
 
 			// Request text component from owner via delegate
 			UTextRenderComponent* TextComp = OnCreateTextComponent.Execute(
-				CellCenter, 
-				CoordText, 
-				CoordinateTextColor, 
+				CellCenter,
+				CoordText,
+				CoordinateTextColor,
 				CoordinateTextScale
 			);
 
@@ -299,90 +199,24 @@ void UDebugHelpers::DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, fl
 	LogImportant(FString::Printf(TEXT("Created %d coordinate text components"), CoordinateTextComponents. Num()));
 }
 
-void UDebugHelpers::ClearCoordinateTextComponents()
-{
-	// Destroy all text components
-	for (UTextRenderComponent* TextComp : CoordinateTextComponents)
-	{
-		if (TextComp && TextComp->IsValidLowLevel())
-		{
-			TextComp->DestroyComponent();
-		}
-	}
-
-	CoordinateTextComponents.Empty();
-	LogVerbose(TEXT("Cleared coordinate text components"));
-}
-
-void UDebugHelpers::DrawCell(FIntPoint GridCoord, FColor Color, float CellSize, FVector OriginLocation)
-{
-	if (!bEnableDebug || !GetWorld()) return;
-
-	UWorld* World = GetWorld();
-	
-	// Calculate cell center in world space
-	FVector CellCenter = GridToWorldPosition(GridCoord, CellSize, OriginLocation);
-	
-	// Calculate box extent (half of cell size)
-	FVector BoxExtent(CellSize * 0.5f, CellSize * 0.5f, 5.0f);
-
-	// Draw box at cell location
-	DrawDebugBox(World, CellCenter, BoxExtent, Color, false, DebugDrawDuration, 0, LineThickness);
-}
-
-void UDebugHelpers::DrawCellStates(FIntPoint GridSize, const TArray<EGridCellType>& CellStates, float CellSize, FVector OriginLocation)
-{
-	if (!bEnableDebug || !GetWorld()) return;
-
-	// Validate array size
-	int32 ExpectedSize = GridSize.X * GridSize.Y;
-	if (CellStates.Num() != ExpectedSize)
-	{
-		LogCritical(FString::Printf(TEXT("DrawCellStates: CellStates array size mismatch!  Expected %d, got %d"), 
-			ExpectedSize, CellStates.Num()));
-		return;
-	}
-
-	// Draw each cell with its state color
-	for (int32 X = 0; X < GridSize.X; ++X)
-	{
-		for (int32 Y = 0; Y < GridSize.Y; ++Y)
-		{
-			int32 Index = Y * GridSize.X + X;
-			EGridCellType CellType = CellStates[Index];
-			FColor CellColor = GetColorForCellType(CellType);
-			
-			DrawCell(FIntPoint(X, Y), CellColor, CellSize, OriginLocation);
-		}
-	}
-}
-
-void UDebugHelpers::ClearDebugDrawings()
-{
-	if (!GetWorld()) return;
-	
-	FlushPersistentDebugLines(GetWorld());
-	LogImportant(TEXT("Debug drawings cleared"));
-}
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
 FColor UDebugHelpers:: GetColorForCellType(EGridCellType CellType) const
 {
 	switch (CellType)
 	{
-		case EGridCellType::ECT_Empty: 
-			return EmptyCellColor;
-		case EGridCellType::ECT_FloorMesh:
-			return OccupiedCellColor;
-		case EGridCellType:: ECT_Wall:
-			return WallCellColor;
-		case EGridCellType::ECT_Doorway:
-			return DoorCellColor;
-		default:
-			return FColor::White;
+	case EGridCellType::ECT_Empty:
+		return EmptyCellColor;  // Blue
+
+	case EGridCellType:: ECT_FloorMesh:
+		return OccupiedCellColor;  // Red
+
+	case EGridCellType::ECT_Wall:
+		return FColor::Purple;  // Wall boundaries
+
+	case EGridCellType::ECT_Doorway:
+		return FColor:: Yellow;  // Doorway slots
+
+	default:
+		return FColor::White;
 	}
 }
 
@@ -394,3 +228,103 @@ FVector UDebugHelpers::GridToWorldPosition(FIntPoint GridCoord, float CellSize, 
 	
 	return OriginLocation + FVector(CenterOffsetX, CenterOffsetY, 0.0f);
 }
+#pragma endregion
+
+#pragma region Debuging Cleanup
+void UDebugHelpers::ClearDebugDrawings()
+{
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		FlushPersistentDebugLines(World);
+		LogVerbose(TEXT("Cleared debug drawings"));
+	}
+}
+
+void UDebugHelpers::ClearCoordinateTextComponents()
+{
+	for (UTextRenderComponent* TextComp : CoordinateTextComponents)
+	{
+		if (TextComp && TextComp->IsValidLowLevel())
+		{
+			TextComp->DestroyComponent();
+		}
+	}
+
+	CoordinateTextComponents.Empty();
+	LogVerbose(TEXT("Cleared coordinate text components"));
+}
+#pragma endregion
+
+#pragma region Debug Logging API
+
+FString UDebugHelpers::GetCategoryPrefix() const
+{
+	if (OwnerActorName. IsEmpty())
+	{
+		AActor* Owner = GetOwner();
+		if (Owner)
+		{
+			return FString::Printf(TEXT("[%s]"), *Owner->GetName());
+		}
+		return TEXT("[Unknown]");
+	}
+
+	return FString::Printf(TEXT("[%s]"), *OwnerActorName);
+}
+
+bool UDebugHelpers::ShouldLog(EDebugLogLevel MessageLevel) const
+{
+	return bEnableDebug && (MessageLevel <= CurrentLogLevel);
+}
+
+void UDebugHelpers::LogCritical(const FString& Message)
+{
+	// Critical messages always show (even if debug disabled)
+	FString FullMessage = FString::Printf(TEXT("%s %s"), *GetCategoryPrefix(), *Message);
+	UE_LOG(LogTemp, Error, TEXT("%s"), *FullMessage);
+}
+
+void UDebugHelpers::LogImportant(const FString& Message)
+{
+	if (! ShouldLog(EDebugLogLevel::Important)) return;
+
+	FString FullMessage = FString::Printf(TEXT("%s %s"), *GetCategoryPrefix(), *Message);
+	UE_LOG(LogTemp, Warning, TEXT("%s"), *FullMessage);
+}
+
+void UDebugHelpers::LogStatistic(const FString& Label, const FString& Value)
+{
+	if (!ShouldLog(EDebugLogLevel::Important)) return;
+
+	FString FullMessage = FString::Printf(TEXT("%s %s:  %s"), *GetCategoryPrefix(), *Label, *Value);
+	UE_LOG(LogTemp, Log, TEXT("%s"), *FullMessage);
+}
+
+void UDebugHelpers::LogStatistic(const FString& Label, int32 Value)
+{
+	LogStatistic(Label, FString:: FromInt(Value));
+}
+
+void UDebugHelpers::LogStatistic(const FString& Label, float Value)
+{
+	LogStatistic(Label, FString:: Printf(TEXT("%.2f"), Value));
+}
+
+void UDebugHelpers::LogVerbose(const FString& Message)
+{
+	if (!ShouldLog(EDebugLogLevel::Verbose)) return;
+
+	FString FullMessage = FString::Printf(TEXT("%s %s"), *GetCategoryPrefix(), *Message);
+	UE_LOG(LogTemp, Log, TEXT("%s"), *FullMessage);
+}
+
+void UDebugHelpers::LogSectionHeader(const FString& Title)
+{
+	if (!ShouldLog(EDebugLogLevel::Important)) return;
+
+	// Just log the title without separator lines (as per your preference)
+	FString FullMessage = FString::Printf(TEXT("%s %s"), *GetCategoryPrefix(), *Title);
+	UE_LOG(LogTemp, Warning, TEXT("%s"), *FullMessage);
+}
+#pragma endregion
