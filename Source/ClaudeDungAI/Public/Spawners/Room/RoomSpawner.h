@@ -10,6 +10,7 @@
 #include "RoomSpawner.generated.h"
 
 class UTextRenderComponent;
+class UInstancedStaticMeshComponent;
 /**
  * RoomSpawner - Actor responsible for spawning and visualizing rooms in the level
  * Holds RoomGenerator for logic and DebugHelpers for visualization
@@ -45,11 +46,19 @@ public:
 	 */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void GenerateRoomGrid();
-
+	
 	/* Clear the room grid and all visualizations */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void ClearRoomGrid();
 
+	/** Generate floor meshes based on RoomData FloorData */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void GenerateFloorMeshes();
+
+	/* Clear all spawned floor meshes */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void ClearFloorMeshes();
+	
 	/* Refresh visualization (useful after changing debug settings) */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void RefreshVisualization();
@@ -92,10 +101,12 @@ private:
 	// Room generator instance (logic layer)
 	UPROPERTY()
 	URoomGenerator* RoomGenerator;
+	
+	// Track spawned floor mesh instances
+	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> FloorMeshComponents;
 
 	// Flag to track if room is generated
 	bool bIsGenerated;
-
 
 	/* Initialize the room generator */
 	bool InitializeGenerator();
@@ -103,6 +114,12 @@ private:
 	/* Update visualization based on current grid state */
 	void UpdateVisualization();
 
+	// Helper functions
+	void SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVector& RoomOrigin);
+	
 	/* Log room statistics to output */
 	void LogRoomStatistics();
+
+	/* Log floor statistics to output */
+	void LogFloorStatistics();
 };

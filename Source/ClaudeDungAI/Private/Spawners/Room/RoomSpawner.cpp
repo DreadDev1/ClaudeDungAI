@@ -2,6 +2,7 @@
 
 #include "Spawners/Room/RoomSpawner.h"
 
+#include "Components/InstancedStaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Generators/Room/RoomGenerator.h"
 
@@ -65,10 +66,14 @@ void ARoomSpawner::ClearRoomGrid()
 		DebugHelpers->LogImportant(TEXT("No room grid to clear. "));
 		return;
 	}
+	
+	// Clear floor meshes first
+	ClearFloorMeshes();
 
 	// Clear the grid
 	RoomGenerator->ClearGrid();
 	bIsGenerated = false;
+	
 
 	// Clear coordinate text components (DebugHelpers manages them)
 	DebugHelpers->ClearCoordinateTextComponents();
@@ -77,6 +82,137 @@ void ARoomSpawner::ClearRoomGrid()
 	DebugHelpers->ClearDebugDrawings();
 
 	DebugHelpers->LogImportant(TEXT("Room grid cleared. "));
+}
+
+void ARoomSpawner::GenerateFloorMeshes()
+{
+	DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
+
+	// Validate prerequisites
+	if (!RoomGenerator || !bIsGenerated)
+	{
+		DebugHelpers->LogCritical(TEXT("Grid must be generated first!  Click 'Generate Room Grid'. "));
+		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
+		return;
+	}
+
+	if (!RoomData || !RoomData->FloorStyleData)
+	{
+		DebugHelpers->LogCritical(TEXT("FloorData is not assigned in RoomData!"));
+		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
+		return;
+	}
+
+	// Clear existing floor meshes
+	ClearFloorMeshes();
+
+	// Generate floor layout (logic only)
+	DebugHelpers->LogImportant(TEXT("Generating floor layout..."));
+	if (!RoomGenerator->GenerateFloor())
+	{
+		DebugHelpers->LogCritical(TEXT("Floor generation failed!"));
+		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
+		return;
+	}
+
+	// Get placed meshes from generator
+	const TArray<FPlacedMeshInfo>& PlacedMeshes = RoomGenerator->GetPlacedFloorMeshes();
+	DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d floor mesh instances... "), PlacedMeshes.Num()));
+
+	// Spawn meshes in world
+	FVector RoomOrigin = GetActorLocation();
+	for (const FPlacedMeshInfo& PlacedMesh : PlacedMeshes)
+	{
+		SpawnFloorMesh(PlacedMesh, RoomOrigin);
+	}
+
+	// Update visualization (green cells should turn red)
+	UpdateVisualization();
+
+	// Log statistics
+	LogFloorStatistics();
+
+	DebugHelpers->LogImportant(TEXT("Floor meshes generated successfully!"));
+	DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
+}
+
+void ARoomSpawner::ClearFloorMeshes()
+{
+	// Destroy all instanced static mesh components
+	for (auto& Pair : FloorMeshComponents)
+	{
+		if (Pair.Value && Pair.Value->IsValidLowLevel())
+		{
+			Pair.Value->DestroyComponent();
+		}
+	}
+
+	FloorMeshComponents.Empty();
+
+	// Clear generator's placed mesh data
+	if (RoomGenerator)
+	{
+		RoomGenerator->ClearPlacedFloorMeshes();
+	}
+
+	DebugHelpers->LogImportant(TEXT("Floor meshes cleared"));
+}
+
+void ARoomSpawner::SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVector& RoomOrigin)
+{
+	// Validate mesh asset
+	if (PlacedMesh.MeshInfo.MeshAsset.IsNull())
+	{
+		DebugHelpers->LogVerbose(TEXT("Skipping mesh with null asset"));
+		return;
+	}
+
+	// Get or create instanced static mesh component for this mesh type
+	UInstancedStaticMeshComponent* ISMComponent = nullptr;
+
+	if (FloorMeshComponents.Contains(PlacedMesh.MeshInfo.MeshAsset))
+	{
+		ISMComponent = FloorMeshComponents[PlacedMesh.MeshInfo.MeshAsset];
+	}
+	else
+	{
+		// Create new ISM component
+		ISMComponent = NewObject<UInstancedStaticMeshComponent>(this);
+		ISMComponent->RegisterComponent();
+		ISMComponent->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+
+		// Load and set static mesh
+		UStaticMesh* StaticMesh = PlacedMesh.MeshInfo.MeshAsset.LoadSynchronous();
+		if (StaticMesh)
+		{
+			ISMComponent->SetStaticMesh(StaticMesh);
+		}
+
+		// Store component
+		FloorMeshComponents.Add(PlacedMesh.MeshInfo.MeshAsset, ISMComponent);
+	}
+
+	if (! ISMComponent)
+	{
+		DebugHelpers->LogVerbose(TEXT("Failed to create ISM component"));
+		return;
+	}
+
+	// Calculate world transform
+	FVector LocalPos = RoomGenerator->GridToLocalPosition(PlacedMesh.GridPosition);
+	FVector WorldPos = RoomOrigin + LocalPos;
+
+	FTransform InstanceTransform(
+		FRotator(0, PlacedMesh. Rotation, 0),
+		WorldPos,
+		FVector::OneVector
+	);
+
+	// Add instance
+	ISMComponent->AddInstance(InstanceTransform);
+
+	DebugHelpers->LogVerbose(FString::Printf(TEXT("Spawned floor mesh at grid (%d, %d)"), 
+		PlacedMesh. GridPosition.X, PlacedMesh.GridPosition.Y));
 }
 
 void ARoomSpawner::RefreshVisualization()
@@ -105,6 +241,24 @@ void ARoomSpawner::ToggleCoordinates()
 	DebugHelpers->bShowCoordinates = !DebugHelpers->bShowCoordinates;
 	DebugHelpers->LogImportant(FString::Printf(TEXT("Coordinates display: %s"), 
 		DebugHelpers->bShowCoordinates ? TEXT("ON") : TEXT("OFF")));
+	
+	RefreshVisualization();
+}
+
+void ARoomSpawner:: ToggleGrid()
+{
+	DebugHelpers->bShowGrid = !DebugHelpers->bShowGrid;
+	DebugHelpers->LogImportant(FString::Printf(TEXT("Grid outline display: %s"), 
+		DebugHelpers->bShowGrid ? TEXT("ON") : TEXT("OFF")));
+	
+	RefreshVisualization();
+}
+
+void ARoomSpawner:: ToggleCellStates()
+{
+	DebugHelpers->bShowCellStates = !DebugHelpers->bShowCellStates;
+	DebugHelpers->LogImportant(FString::Printf(TEXT("Cell states display: %s"), 
+		DebugHelpers->bShowCellStates ? TEXT("ON") : TEXT("OFF")));
 	
 	RefreshVisualization();
 }
@@ -143,22 +297,56 @@ UTextRenderComponent* ARoomSpawner::CreateTextRenderComponent(FVector WorldPosit
 	return TextComp;
 }
 
-void ARoomSpawner:: ToggleGrid()
+void ARoomSpawner::LogRoomStatistics()
 {
-	DebugHelpers->bShowGrid = !DebugHelpers->bShowGrid;
-	DebugHelpers->LogImportant(FString::Printf(TEXT("Grid outline display: %s"), 
-		DebugHelpers->bShowGrid ? TEXT("ON") : TEXT("OFF")));
+	if (!RoomGenerator)
+	{
+		return;
+	}
+
+	DebugHelpers->LogSectionHeader(TEXT("ROOM STATISTICS"));
 	
-	RefreshVisualization();
+	FIntPoint GridSize = RoomGenerator->GetGridSize();
+	int32 TotalCells = RoomGenerator->GetTotalCellCount();
+	int32 EmptyCells = RoomGenerator->GetCellCountByType(EGridCellType::ECT_Empty);
+	int32 OccupiedCells = RoomGenerator->GetCellCountByType(EGridCellType::ECT_FloorMesh);
+	float OccupancyPercent = RoomGenerator->GetOccupancyPercentage();
+
+	DebugHelpers->LogStatistic(TEXT("Grid Size"), FString::Printf(TEXT("%d x %d"), GridSize.X, GridSize.Y));
+	DebugHelpers->LogStatistic(TEXT("Total Cells"), TotalCells);
+	DebugHelpers->LogStatistic(TEXT("Empty Cells"), EmptyCells);
+	DebugHelpers->LogStatistic(TEXT("Occupied Cells"), OccupiedCells);
+	DebugHelpers->LogStatistic(TEXT("Occupancy"), OccupancyPercent);
+	
+	// End header (NEW)
+	DebugHelpers->LogSectionHeader(TEXT("ROOM STATISTICS"));
 }
 
-void ARoomSpawner:: ToggleCellStates()
+void ARoomSpawner::LogFloorStatistics()
 {
-	DebugHelpers->bShowCellStates = !DebugHelpers->bShowCellStates;
-	DebugHelpers->LogImportant(FString::Printf(TEXT("Cell states display: %s"), 
-		DebugHelpers->bShowCellStates ? TEXT("ON") : TEXT("OFF")));
-	
-	RefreshVisualization();
+	if (!RoomGenerator)
+	{
+		return;
+	}
+
+	DebugHelpers->LogSectionHeader(TEXT("FLOOR STATISTICS"));
+
+	int32 LargeTiles, MediumTiles, SmallTiles, FillerTiles;
+	RoomGenerator->GetFloorStatistics(LargeTiles, MediumTiles, SmallTiles, FillerTiles);
+
+	int32 TotalTiles = LargeTiles + MediumTiles + SmallTiles + FillerTiles;
+	float Coverage = RoomGenerator->GetOccupancyPercentage();
+	int32 EmptyCells = RoomGenerator->GetCellCountByType(EGridCellType:: ECT_Empty);
+
+	DebugHelpers->LogStatistic(TEXT("Large Tiles (400x400)"), LargeTiles);
+	DebugHelpers->LogStatistic(TEXT("Medium Tiles (200x200)"), MediumTiles);
+	DebugHelpers->LogStatistic(TEXT("Small Tiles (100x)"), SmallTiles);
+	DebugHelpers->LogStatistic(TEXT("Filler Tiles"), FillerTiles);
+	DebugHelpers->LogStatistic(TEXT("Total Tiles Placed"), TotalTiles);
+	DebugHelpers->LogStatistic(TEXT("Floor Coverage"), Coverage);
+	DebugHelpers->LogStatistic(TEXT("Empty Cells Remaining"), EmptyCells);
+
+	DebugHelpers->LogSectionHeader(TEXT("FLOOR STATISTICS"));
 }
 #pragma endregion
 #endif // WITH_EDITOR
@@ -193,29 +381,4 @@ void ARoomSpawner::UpdateVisualization()
 	DebugHelpers->DrawGrid(GridSize, GridState, CellSize, RoomOrigin);
 
 	DebugHelpers->LogVerbose(TEXT("Visualization updated."));
-}
-
-void ARoomSpawner::LogRoomStatistics()
-{
-	if (!RoomGenerator)
-	{
-		return;
-	}
-
-	DebugHelpers->LogSectionHeader(TEXT("ROOM STATISTICS"));
-	
-	FIntPoint GridSize = RoomGenerator->GetGridSize();
-	int32 TotalCells = RoomGenerator->GetTotalCellCount();
-	int32 EmptyCells = RoomGenerator->GetCellCountByType(EGridCellType::ECT_Empty);
-	int32 OccupiedCells = RoomGenerator->GetCellCountByType(EGridCellType::ECT_FloorMesh);
-	float OccupancyPercent = RoomGenerator->GetOccupancyPercentage();
-
-	DebugHelpers->LogStatistic(TEXT("Grid Size"), FString::Printf(TEXT("%d x %d"), GridSize.X, GridSize.Y));
-	DebugHelpers->LogStatistic(TEXT("Total Cells"), TotalCells);
-	DebugHelpers->LogStatistic(TEXT("Empty Cells"), EmptyCells);
-	DebugHelpers->LogStatistic(TEXT("Occupied Cells"), OccupiedCells);
-	DebugHelpers->LogStatistic(TEXT("Occupancy"), OccupancyPercent);
-	
-	// End header (NEW)
-	DebugHelpers->LogSectionHeader(TEXT("ROOM STATISTICS"));
 }

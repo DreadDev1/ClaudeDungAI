@@ -6,7 +6,41 @@
 #include "UObject/NoExportTypes.h"
 #include "Data/Grid/GridData.h"
 #include "Data/Room/RoomData.h"
+#include "Data/Room/FloorData.h"
 #include "RoomGenerator.generated.h"
+
+/* Struct to track placed mesh information */
+USTRUCT()
+struct FPlacedMeshInfo
+{
+	GENERATED_BODY()
+
+	// Grid position (top-left cell)
+	UPROPERTY()
+	FIntPoint GridPosition;
+
+	// Size in cells
+	UPROPERTY()
+	FIntPoint Size;
+
+	// Rotation angle (0, 90, 180, 270)
+	UPROPERTY()
+	int32 Rotation;
+
+	// Mesh placement info from data asset
+	UPROPERTY()
+	FMeshPlacementInfo MeshInfo;
+
+	// World transform for spawning
+	UPROPERTY()
+	FTransform WorldTransform;
+
+	FPlacedMeshInfo()
+		: GridPosition(FIntPoint:: ZeroValue)
+		, Size(FIntPoint::ZeroValue)
+		, Rotation(0)
+	{}
+};
 
 /**
  * RoomGenerator - Pure logic class for room generation
@@ -111,6 +145,31 @@ public:
 	bool ClearArea(FIntPoint StartCoord, FIntPoint Size);
 
 	// ============================================================================
+	// FLOOR GENERATION
+	// ============================================================================
+
+	/**
+	 * Generate floor meshes using sequential weighted fill algorithm
+	 * @return True if generation successful
+	 */
+	bool GenerateFloor();
+
+	/**
+	 * Get list of placed floor meshes
+	 */
+	const TArray<FPlacedMeshInfo>& GetPlacedFloorMeshes() const { return PlacedFloorMeshes; }
+
+	/**
+	 * Clear all placed floor meshes
+	 */
+	void ClearPlacedFloorMeshes();
+
+	/**
+	 * Get floor generation statistics
+	 */
+	void GetFloorStatistics(int32& OutLargeTiles, int32& OutMediumTiles, int32& OutSmallTiles, int32& OutFillerTiles) const;
+	
+	// ============================================================================
 	// COORDINATE CONVERSION HELPERS
 	// ============================================================================
 
@@ -176,6 +235,51 @@ private:
 
 	// Initialization flag
 	bool bIsInitialized;
+	
+	// Placed floor meshes
+	UPROPERTY()
+	TArray<FPlacedMeshInfo> PlacedFloorMeshes;
+
+	// Statistics tracking
+	int32 LargeTilesPlaced;
+	int32 MediumTilesPlaced;
+	int32 SmallTilesPlaced;
+	int32 FillerTilesPlaced;
+	
+	// ============================================================================
+	// INTERNAL FLOOR GENERATION HELPERS
+	// ============================================================================
+
+	/**
+	 * Fill grid with tiles of specific size
+	 * @param TilePool - Pool of meshes to choose from
+	 * @param TargetSize - Target size to match (for filtering)
+	 */
+	void FillWithTileSize(const TArray<FMeshPlacementInfo>& TilePool, FIntPoint TargetSize);
+
+	/**
+	 * Select a mesh from pool using weighted random selection
+	 * @param Pool - Pool of meshes with placement weights
+	 * @return Selected mesh info
+	 */
+	FMeshPlacementInfo SelectWeightedMesh(const TArray<FMeshPlacementInfo>& Pool);
+
+	/**
+	 * Try to place a mesh at specified location
+	 * @param StartCoord - Grid coordinate to place mesh
+	 * @param Size - Size of mesh in cells
+	 * @param MeshInfo - Mesh placement info
+	 * @param Rotation - Rotation angle
+	 * @return True if placement successful
+	 */
+	bool TryPlaceMesh(FIntPoint StartCoord, FIntPoint Size, const FMeshPlacementInfo& MeshInfo, int32 Rotation = 0);
+
+	/**
+	 * Calculate footprint size in cells from mesh bounds
+	 * @param MeshInfo - Mesh placement info
+	 * @return Footprint size in cells
+	 */
+	FIntPoint CalculateFootprint(const FMeshPlacementInfo& MeshInfo) const;
 
 	// ============================================================================
 	// INTERNAL HELPERS

@@ -1,6 +1,7 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Generators/Room/RoomGenerator.h"
+#include "Data/Grid/GridData.h"
 
 // ============================================================================
 // INITIALIZATION
@@ -18,6 +19,12 @@ bool URoomGenerator::Initialize(URoomData* InRoomData)
 	GridSize = RoomData->GridSize;
 	CellSize = CELL_SIZE;
 	bIsInitialized = true;
+
+	// Initialize statistics
+	LargeTilesPlaced = 0;
+	MediumTilesPlaced = 0;
+	SmallTilesPlaced = 0;
+	FillerTilesPlaced = 0;
 
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::Initialize - Initialized with GridSize (%d, %d), CellSize %.2f"), 
 		GridSize.X, GridSize.Y, CellSize);
@@ -66,6 +73,9 @@ void URoomGenerator:: ClearGrid()
 		Cell = EGridCellType::ECT_Empty;
 	}
 
+	// Clear placed meshes
+	ClearPlacedFloorMeshes();
+	
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ClearGrid - Grid cleared"));
 }
 
@@ -162,6 +172,219 @@ bool URoomGenerator::ClearArea(FIntPoint StartCoord, FIntPoint Size)
 	}
 
 	return true;
+}
+
+// ============================================================================
+// FLOOR GENERATION
+// ============================================================================
+
+bool URoomGenerator::GenerateFloor()
+{
+	if (!bIsInitialized)
+	{
+		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateFloor - Generator not initialized!"));
+		return false;
+	}
+
+	if (! RoomData || !RoomData->FloorStyleData)
+	{
+		UE_LOG(LogTemp, Error, TEXT("URoomGenerator:: GenerateFloor - FloorData not assigned!"));
+		return false;
+	}
+
+	// Clear previous placement data
+	ClearPlacedFloorMeshes();
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateFloor - Starting floor generation"));
+
+	// Get floor mesh pool
+	const TArray<FMeshPlacementInfo>& FloorMeshes = RoomData->FloorStyleData->FloorTilePool;
+
+	if (FloorMeshes. Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("URoomGenerator::GenerateFloor - No floor meshes defined in FloorData!"));
+		return false;
+	}
+
+	// Sequential fill:  Large -> Medium -> Small
+	// Large tiles (400x400, 200x400)
+	FillWithTileSize(FloorMeshes, FIntPoint(4, 4)); // 400x400 = 4x4 cells
+	FillWithTileSize(FloorMeshes, FIntPoint(2, 4)); // 200x400 = 2x4 cells
+	FillWithTileSize(FloorMeshes, FIntPoint(4, 2)); // 400x200 = 4x2 cells
+
+	// Medium tiles (200x200)
+	FillWithTileSize(FloorMeshes, FIntPoint(2, 2)); // 200x200 = 2x2 cells
+
+	// Small tiles (100x100, 100x200, 200x100)
+	FillWithTileSize(FloorMeshes, FIntPoint(1, 2)); // 100x200 = 1x2 cells
+	FillWithTileSize(FloorMeshes, FIntPoint(2, 1)); // 200x100 = 2x1 cells
+	FillWithTileSize(FloorMeshes, FIntPoint(1, 1)); // 100x100 = 1x1 cells
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateFloor - Floor generation complete.  Placed %d meshes"), PlacedFloorMeshes. Num());
+
+	return true;
+}
+
+void URoomGenerator::FillWithTileSize(const TArray<FMeshPlacementInfo>& TilePool, FIntPoint TargetSize)
+{
+	// Filter tiles that match target size
+	TArray<FMeshPlacementInfo> MatchingTiles;
+
+	for (const FMeshPlacementInfo& MeshInfo : TilePool)
+	{
+		FIntPoint Footprint = CalculateFootprint(MeshInfo);
+
+		// Check if footprint matches target size (or rotated version)
+		if ((Footprint.X == TargetSize.X && Footprint.Y == TargetSize. Y) ||
+			(Footprint.X == TargetSize.Y && Footprint.Y == TargetSize.X))
+		{
+			MatchingTiles.Add(MeshInfo);
+		}
+	}
+
+	if (MatchingTiles. Num() == 0)
+	{
+		return; // No tiles of this size
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("URoomGenerator:: FillWithTileSize - Filling with %dx%d tiles (%d options)"), 
+		TargetSize.X, TargetSize.Y, MatchingTiles.Num());
+
+	// Try to place tiles of this size across the grid
+	for (int32 Y = 0; Y < GridSize.Y; ++Y)
+	{
+		for (int32 X = 0; X < GridSize.X; ++X)
+		{
+			FIntPoint StartCoord(X, Y);
+
+			// Check if area is available
+			if (IsAreaAvailable(StartCoord, TargetSize))
+			{
+				// Select weighted random mesh
+				FMeshPlacementInfo SelectedMesh = SelectWeightedMesh(MatchingTiles);
+
+				// Try to place mesh
+				if (TryPlaceMesh(StartCoord, TargetSize, SelectedMesh, 0))
+				{
+					// Update statistics
+					int32 TileArea = TargetSize.X * TargetSize.Y;
+					if (TileArea >= 16) LargeTilesPlaced++;
+					else if (TileArea >= 4) MediumTilesPlaced++;
+					else if (TileArea >= 2) SmallTilesPlaced++;
+					else FillerTilesPlaced++;
+				}
+			}
+		}
+	}
+}
+
+FMeshPlacementInfo URoomGenerator::SelectWeightedMesh(const TArray<FMeshPlacementInfo>& Pool)
+{
+	if (Pool.Num() == 0)
+	{
+		return FMeshPlacementInfo(); // Return empty if no options
+	}
+
+	if (Pool.Num() == 1)
+	{
+		return Pool[0]; // Only one option
+	}
+
+	// Calculate total weight
+	float TotalWeight = 0.0f;
+	for (const FMeshPlacementInfo& MeshInfo : Pool)
+	{
+		TotalWeight += MeshInfo.PlacementWeight;
+	}
+
+	// Random value between 0 and total weight
+	float RandomValue = FMath::FRandRange(0.0f, TotalWeight);
+
+	// Select mesh based on weight
+	float CurrentWeight = 0.0f;
+	for (const FMeshPlacementInfo& MeshInfo : Pool)
+	{
+		CurrentWeight += MeshInfo.PlacementWeight;
+		if (RandomValue <= CurrentWeight)
+		{
+			return MeshInfo;
+		}
+	}
+
+	// Fallback to last mesh
+	return Pool. Last();
+}
+
+bool URoomGenerator::TryPlaceMesh(FIntPoint StartCoord, FIntPoint Size, const FMeshPlacementInfo& MeshInfo, int32 Rotation)
+{
+	// Check if area is available
+	if (!IsAreaAvailable(StartCoord, Size))
+	{
+		return false;
+	}
+
+	// Mark area as occupied
+	if (!MarkArea(StartCoord, Size, EGridCellType::ECT_FloorMesh))
+	{
+		return false;
+	}
+
+	// Create placed mesh info
+	FPlacedMeshInfo PlacedMesh;
+	PlacedMesh.GridPosition = StartCoord;
+	PlacedMesh.Size = Size;
+	PlacedMesh.Rotation = Rotation;
+	PlacedMesh.MeshInfo = MeshInfo;
+
+	// Calculate world transform (will be used by spawner)
+	FVector LocalPos = GridToLocalPosition(StartCoord);
+	PlacedMesh.WorldTransform = FTransform(
+		FRotator(0, Rotation, 0),
+		LocalPos,
+		FVector:: OneVector
+	);
+
+	// Store placed mesh
+	PlacedFloorMeshes.Add(PlacedMesh);
+
+	return true;
+}
+
+FIntPoint URoomGenerator::CalculateFootprint(const FMeshPlacementInfo& MeshInfo) const
+{
+	// If footprint is explicitly defined, use it
+	if (MeshInfo.GridFootprint.X > 0 && MeshInfo. GridFootprint.Y > 0)
+	{
+		return MeshInfo.GridFootprint;
+	}
+
+	// Otherwise, calculate from mesh bounds
+	if (! MeshInfo.MeshAsset. IsNull())
+	{
+		// For now, return default 1x1 if bounds not available
+		// TODO: Load mesh and calculate actual bounds
+		return FIntPoint(1, 1);
+	}
+
+	// Fallback
+	return FIntPoint(1, 1);
+}
+
+void URoomGenerator::ClearPlacedFloorMeshes()
+{
+	PlacedFloorMeshes. Empty();
+	LargeTilesPlaced = 0;
+	MediumTilesPlaced = 0;
+	SmallTilesPlaced = 0;
+	FillerTilesPlaced = 0;
+}
+
+void URoomGenerator::GetFloorStatistics(int32& OutLargeTiles, int32& OutMediumTiles, int32& OutSmallTiles, int32& OutFillerTiles) const
+{
+	OutLargeTiles = LargeTilesPlaced;
+	OutMediumTiles = MediumTilesPlaced;
+	OutSmallTiles = SmallTilesPlaced;
+	OutFillerTiles = FillerTilesPlaced;
 }
 
 // ============================================================================
