@@ -318,7 +318,7 @@ FMeshPlacementInfo URoomGenerator::SelectWeightedMesh(const TArray<FMeshPlacemen
 bool URoomGenerator::TryPlaceMesh(FIntPoint StartCoord, FIntPoint Size, const FMeshPlacementInfo& MeshInfo, int32 Rotation)
 {
 	// Check if area is available
-	if (!IsAreaAvailable(StartCoord, Size))
+	if (! IsAreaAvailable(StartCoord, Size))
 	{
 		return false;
 	}
@@ -336,12 +336,22 @@ bool URoomGenerator::TryPlaceMesh(FIntPoint StartCoord, FIntPoint Size, const FM
 	PlacedMesh.Rotation = Rotation;
 	PlacedMesh.MeshInfo = MeshInfo;
 
-	// Calculate world transform (will be used by spawner)
-	FVector LocalPos = GridToLocalPosition(StartCoord);
+	// FIXED: Calculate center of entire mesh footprint, not just first cell
+	// Formula: TopLeftCorner + (MeshSize * CellSize * 0.5)
+	// Example: 2x2 mesh at (0,0) = (0,0) + (200*0.5, 200*0.5) = (100, 100)
+	float OffsetX = (Size.X * CellSize) * 0.5f;
+	float OffsetY = (Size.Y * CellSize) * 0.5f;
+	
+	FVector LocalPos = FVector(
+		StartCoord. X * CellSize + OffsetX,
+		StartCoord.Y * CellSize + OffsetY,
+		0.0f
+	);
+
 	PlacedMesh.WorldTransform = FTransform(
 		FRotator(0, Rotation, 0),
 		LocalPos,
-		FVector:: OneVector
+		FVector::OneVector
 	);
 
 	// Store placed mesh

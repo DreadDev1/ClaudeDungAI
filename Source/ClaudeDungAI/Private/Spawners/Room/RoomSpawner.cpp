@@ -170,7 +170,7 @@ void ARoomSpawner::SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVect
 	// Get or create instanced static mesh component for this mesh type
 	UInstancedStaticMeshComponent* ISMComponent = nullptr;
 
-	if (FloorMeshComponents.Contains(PlacedMesh.MeshInfo.MeshAsset))
+	if (FloorMeshComponents. Contains(PlacedMesh. MeshInfo.MeshAsset))
 	{
 		ISMComponent = FloorMeshComponents[PlacedMesh.MeshInfo.MeshAsset];
 	}
@@ -189,30 +189,33 @@ void ARoomSpawner::SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVect
 		}
 
 		// Store component
-		FloorMeshComponents.Add(PlacedMesh.MeshInfo.MeshAsset, ISMComponent);
+		FloorMeshComponents.Add(PlacedMesh.MeshInfo. MeshAsset, ISMComponent);
 	}
 
-	if (! ISMComponent)
+	if (!ISMComponent)
 	{
 		DebugHelpers->LogVerbose(TEXT("Failed to create ISM component"));
 		return;
 	}
 
-	// Calculate world transform
-	FVector LocalPos = RoomGenerator->GridToLocalPosition(PlacedMesh.GridPosition);
+	// Use the WorldTransform we calculated in TryPlaceMesh
+	FVector LocalPos = PlacedMesh.WorldTransform. GetLocation();
 	FVector WorldPos = RoomOrigin + LocalPos;
 
+	// DEBUG: Log the spawn position
+	UE_LOG(LogTemp, Warning, TEXT("SpawnFloorMesh: Grid(%d,%d) Size(%d,%d) LocalPos(%s) RoomOrigin(%s) -> WorldPos(%s)"),
+		PlacedMesh.GridPosition.X, PlacedMesh.GridPosition.Y,
+		PlacedMesh. Size.X, PlacedMesh.Size.Y,
+		*LocalPos.ToString(), *RoomOrigin.ToString(), *WorldPos.ToString());
+
 	FTransform InstanceTransform(
-		FRotator(0, PlacedMesh. Rotation, 0),
+		FRotator(0, PlacedMesh.Rotation, 0),
 		WorldPos,
 		FVector::OneVector
 	);
 
 	// Add instance
 	ISMComponent->AddInstance(InstanceTransform);
-
-	DebugHelpers->LogVerbose(FString::Printf(TEXT("Spawned floor mesh at grid (%d, %d)"), 
-		PlacedMesh. GridPosition.X, PlacedMesh.GridPosition.Y));
 }
 
 void ARoomSpawner::RefreshVisualization()
