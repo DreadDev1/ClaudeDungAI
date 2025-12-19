@@ -88,27 +88,42 @@ void ARoomSpawner::GenerateFloorMeshes()
 {
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
 
-	// Validate prerequisites
-	if (!RoomGenerator || !bIsGenerated)
+	// Validate RoomData
+	if (!RoomData)
 	{
-		DebugHelpers->LogCritical(TEXT("Grid must be generated first!  Click 'Generate Room Grid'. "));
+		DebugHelpers->LogCritical(TEXT("RoomData is not assigned!  Cannot generate floor meshes."));
 		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
 		return;
 	}
 
-	if (!RoomData || !RoomData->FloorStyleData)
+	if (!RoomData->FloorStyleData. IsValid())
 	{
-		DebugHelpers->LogCritical(TEXT("FloorData is not assigned in RoomData!"));
+		DebugHelpers->LogCritical(TEXT("FloorStyleData is not assigned in RoomData! "));
 		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
 		return;
+	}
+
+	// AUTO-GENERATE GRID:  If grid doesn't exist, create it automatically
+	if (!RoomGenerator || !bIsGenerated)
+	{
+		DebugHelpers->LogImportant(TEXT("Grid not found. Auto-generating grid..."));
+		GenerateRoomGrid();  // This will create RoomGenerator and grid
+		
+		// Verify generation succeeded
+		if (!RoomGenerator || !bIsGenerated)
+		{
+			DebugHelpers->LogCritical(TEXT("Auto-generation of grid failed!"));
+			DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
+			return;
+		}
 	}
 
 	// Clear existing floor meshes
 	ClearFloorMeshes();
 
 	// Generate floor layout (logic only)
-	DebugHelpers->LogImportant(TEXT("Generating floor layout..."));
-	if (!RoomGenerator->GenerateFloor())
+	DebugHelpers->LogImportant(TEXT("Generating floor layout... "));
+	if (! RoomGenerator->GenerateFloor())
 	{
 		DebugHelpers->LogCritical(TEXT("Floor generation failed!"));
 		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
@@ -117,7 +132,7 @@ void ARoomSpawner::GenerateFloorMeshes()
 
 	// Get placed meshes from generator
 	const TArray<FPlacedMeshInfo>& PlacedMeshes = RoomGenerator->GetPlacedFloorMeshes();
-	DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d floor mesh instances... "), PlacedMeshes.Num()));
+	DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d floor mesh instances...  "), PlacedMeshes.Num()));
 
 	// Spawn meshes in world
 	FVector RoomOrigin = GetActorLocation();

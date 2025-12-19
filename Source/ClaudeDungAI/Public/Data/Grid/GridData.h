@@ -64,6 +64,21 @@ struct FMeshPlacementInfo
 	TArray<int32> AllowedRotations = {0}; 
 };
 
+// Struct for designer-defined rectangular empty regions
+USTRUCT(BlueprintType)
+struct FForcedEmptyRegion
+{
+	GENERATED_BODY()
+
+	// First corner of the rectangular region (inclusive)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Region")
+	FIntPoint StartCell = FIntPoint:: ZeroValue;
+
+	// Opposite corner of the rectangular region (inclusive)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Region")
+	FIntPoint EndCell = FIntPoint::ZeroValue;
+};
+
 // --- Wall Module Info ---
 
 // Struct for complex wall modules (Base, Middle, Top)
@@ -119,25 +134,6 @@ struct FForcedWallPlacement
 	// The exact wall module to place (includes footprint, meshes, and all properties)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Wall Placement")
 	FWallModule WallModule;
-};
-
-// --- Forced Empty Region (Designer Override System) ---
-
-// Struct for defining rectangular regions that should remain empty (no floor tiles)
-// Used to create L-shapes, T-shapes, courtyards, or any irregular room shape
-USTRUCT(BlueprintType)
-struct FForcedEmptyRegion
-{
-	GENERATED_BODY()
-
-	// The starting corner of the rectangular region (inclusive)
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Region")
-	FIntPoint StartCell = FIntPoint(0, 0);
-
-	// The ending corner of the rectangular region (inclusive)
-	// Order doesn't matter - the system will calculate min/max automatically
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Region")
-	FIntPoint EndCell = FIntPoint(0, 0);
 };
 
 // --- Door Position Offsets ---
