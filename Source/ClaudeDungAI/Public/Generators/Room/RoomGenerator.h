@@ -168,6 +168,26 @@ public:
 	 * Get floor generation statistics
 	 */
 	void GetFloorStatistics(int32& OutLargeTiles, int32& OutMediumTiles, int32& OutSmallTiles, int32& OutFillerTiles) const;
+
+	/**
+ * Execute forced placements from RoomData
+ * Places designer-specified meshes at exact coordinates before random fill
+ * @return Number of forced placements successfully placed
+ */
+	int32 ExecuteForcedPlacements();
+
+	/**
+	 * Expand forced empty regions into individual cell list
+	 * Combines rectangular regions and individual cells into unified list
+	 * @return Array of all cells that should remain empty
+	 */
+	TArray<FIntPoint> ExpandForcedEmptyRegions() const;
+
+	/**
+	 * Mark forced empty cells as reserved (blocked from placement)
+	 * @param EmptyCells - List of cells to mark as empty/reserved
+	 */
+	void MarkForcedEmptyCells(const TArray<FIntPoint>& EmptyCells);
 	
 	// ============================================================================
 	// COORDINATE CONVERSION HELPERS

@@ -390,13 +390,23 @@ void ARoomSpawner::UpdateVisualization()
 	}
 
 	// Get grid data
-	FIntPoint GridSize = RoomGenerator->GetGridSize();
-	const TArray<EGridCellType>& GridState = RoomGenerator->GetGridState();
-	float CellSize = RoomGenerator->GetCellSize();
 	FVector RoomOrigin = GetActorLocation();
+	FIntPoint GridSize = RoomGenerator->GetGridSize();
+	float CellSize = RoomGenerator->GetCellSize();
+	const TArray<EGridCellType>& GridState = RoomGenerator->GetGridState();
 
-	// Draw the grid with all enabled visualizations
-	DebugHelpers->DrawGrid(GridSize, GridState, CellSize, RoomOrigin);
+
+	// Draw forced empty regions (if any)
+	if (RoomData && RoomData->ForcedEmptyRegions.Num() > 0)
+	{
+		DebugHelpers->DrawForcedEmptyRegions(RoomData->ForcedEmptyRegions, GridSize, CellSize, RoomOrigin);
+	}
+
+	// Draw forced empty cells (if any)
+	if (RoomData && RoomData->ForcedEmptyFloorCells.Num() > 0)
+	{
+		DebugHelpers->DrawForcedEmptyCells(RoomData->ForcedEmptyFloorCells, GridSize, CellSize, RoomOrigin);
+	}
 
 	DebugHelpers->LogVerbose(TEXT("Visualization updated."));
 }

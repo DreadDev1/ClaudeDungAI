@@ -192,35 +192,65 @@ bool URoomGenerator::GenerateFloor()
 		return false;
 	}
 
+	// Load FloorData and keep strong reference throughout function
+	UFloorData* FloorStyleData = RoomData->FloorStyleData.LoadSynchronous();
+	if (!FloorStyleData)
+	{
+		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateFloor - Failed to load FloorStyleData!"));
+		return false;
+	}
+
+	// Validate FloorTilePool exists
+	if (FloorStyleData->FloorTilePool. Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("URoomGenerator::GenerateFloor - No floor meshes defined in FloorTilePool!"));
+		return false;
+	}
+	
 	// Clear previous placement data
 	ClearPlacedFloorMeshes();
 
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateFloor - Starting floor generation"));
 
-	// Get floor mesh pool
-	const TArray<FMeshPlacementInfo>& FloorMeshes = RoomData->FloorStyleData->FloorTilePool;
-
-	if (FloorMeshes. Num() == 0)
+	// ========================================================================
+	// PHASE 0:  FORCED EMPTY REGIONS (Mark cells as reserved)
+	// ========================================================================
+	TArray<FIntPoint> ForcedEmptyCells = ExpandForcedEmptyRegions();
+	if (ForcedEmptyCells.Num() > 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("URoomGenerator::GenerateFloor - No floor meshes defined in FloorData!"));
-		return false;
+		MarkForcedEmptyCells(ForcedEmptyCells);
+		UE_LOG(LogTemp, Log, TEXT("  Phase 0: Marked %d forced empty cells"), ForcedEmptyCells. Num());
 	}
 
-	// Sequential fill:  Large -> Medium -> Small
-	// Large tiles (400x400, 200x400)
-	FillWithTileSize(FloorMeshes, FIntPoint(4, 4)); // 400x400 = 4x4 cells
-	FillWithTileSize(FloorMeshes, FIntPoint(2, 4)); // 200x400 = 2x4 cells
-	FillWithTileSize(FloorMeshes, FIntPoint(4, 2)); // 400x200 = 4x2 cells
+	// ========================================================================
+	// PHASE 1: FORCED PLACEMENTS (Designer overrides - highest priority)
+	// ========================================================================
+	int32 ForcedCount = ExecuteForcedPlacements();
+	UE_LOG(LogTemp, Log, TEXT("  Phase 1: Placed %d forced meshes"), ForcedCount);
+	
+	// ========================================================================
+	// PHASE 2: GREEDY FILL (Large → Medium → Small)
+	// ========================================================================
+	// Use the FloorData pointer we loaded at the top (safer than re-accessing)
+	const TArray<FMeshPlacementInfo>& FloorMeshes = FloorStyleData->FloorTilePool;
+
+	UE_LOG(LogTemp, Log, TEXT("  Phase 2: Greedy fill with %d tile options"), FloorMeshes.Num());
+
+	// Large tiles (400x400, 200x400, 400x200)
+	FillWithTileSize(FloorMeshes, FIntPoint(4, 4)); // 400x400
+	FillWithTileSize(FloorMeshes, FIntPoint(2, 4)); // 200x400
+	FillWithTileSize(FloorMeshes, FIntPoint(4, 2)); // 400x200
 
 	// Medium tiles (200x200)
-	FillWithTileSize(FloorMeshes, FIntPoint(2, 2)); // 200x200 = 2x2 cells
+	FillWithTileSize(FloorMeshes, FIntPoint(2, 2)); // 200x200
 
-	// Small tiles (100x100, 100x200, 200x100)
-	FillWithTileSize(FloorMeshes, FIntPoint(1, 2)); // 100x200 = 1x2 cells
-	FillWithTileSize(FloorMeshes, FIntPoint(2, 1)); // 200x100 = 2x1 cells
-	FillWithTileSize(FloorMeshes, FIntPoint(1, 1)); // 100x100 = 1x1 cells
+	// Small tiles (100x200, 200x100, 100x100)
+	FillWithTileSize(FloorMeshes, FIntPoint(1, 2)); // 100x200
+	FillWithTileSize(FloorMeshes, FIntPoint(2, 1)); // 200x100
+	FillWithTileSize(FloorMeshes, FIntPoint(1, 1)); // 100x100
 
-	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateFloor - Floor generation complete.  Placed %d meshes"), PlacedFloorMeshes. Num());
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateFloor - Floor generation complete.  Placed %d total meshes"), 
+		PlacedFloorMeshes.Num());
 
 	return true;
 }
@@ -395,6 +425,138 @@ void URoomGenerator::GetFloorStatistics(int32& OutLargeTiles, int32& OutMediumTi
 	OutMediumTiles = MediumTilesPlaced;
 	OutSmallTiles = SmallTilesPlaced;
 	OutFillerTiles = FillerTilesPlaced;
+}
+
+int32 URoomGenerator::ExecuteForcedPlacements()
+{
+	if (!bIsInitialized || !RoomData)
+	{
+		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::ExecuteForcedPlacements - Not initialized! "));
+		return 0;
+	}
+
+	int32 SuccessfulPlacements = 0;
+	const TMap<FIntPoint, FMeshPlacementInfo>& ForcedPlacements = RoomData->ForcedInteriorPlacements;
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedPlacements - Processing %d forced placements"), ForcedPlacements. Num());
+
+	for (const auto& Pair : ForcedPlacements)
+	{
+		const FIntPoint StartCoord = Pair.Key;
+		const FMeshPlacementInfo& MeshInfo = Pair.Value;
+
+		// Validate mesh asset
+		if (MeshInfo.MeshAsset.IsNull())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) has null mesh asset - skipping"), 
+				StartCoord.X, StartCoord.Y);
+			continue;
+		}
+
+		// Calculate footprint
+		FIntPoint Footprint = CalculateFootprint(MeshInfo);
+
+		// Select rotation (use first allowed rotation for forced placements)
+		int32 Rotation = 0;
+		if (MeshInfo.AllowedRotations.Num() > 0)
+		{
+			Rotation = MeshInfo. AllowedRotations[0];
+		}
+
+		// Apply rotation to footprint
+		FIntPoint RotatedFootprint = GetRotatedFootprint(Footprint, Rotation);
+
+		// Validate bounds
+		if (StartCoord.X + RotatedFootprint.X > GridSize.X || 
+		    StartCoord.Y + RotatedFootprint.Y > GridSize.Y)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) is out of bounds (size %dx%d) - skipping"), 
+				StartCoord.X, StartCoord.Y, RotatedFootprint.X, RotatedFootprint.Y);
+			continue;
+		}
+
+		// Check if area is available
+		if (! IsAreaAvailable(StartCoord, RotatedFootprint))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) overlaps existing placement - skipping"), 
+				StartCoord.X, StartCoord.Y);
+			continue;
+		}
+
+		// Place the mesh
+		if (TryPlaceMesh(StartCoord, RotatedFootprint, MeshInfo, Rotation))
+		{
+			SuccessfulPlacements++;
+			UE_LOG(LogTemp, Verbose, TEXT("  Placed forced mesh at (%d,%d) size %dx%d"), 
+				StartCoord.X, StartCoord.Y, RotatedFootprint.X, RotatedFootprint.Y);
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedPlacements - Placed %d/%d forced meshes"), 
+		SuccessfulPlacements, ForcedPlacements.Num());
+
+	return SuccessfulPlacements;
+}
+
+TArray<FIntPoint> URoomGenerator::ExpandForcedEmptyRegions() const
+{
+	TArray<FIntPoint> ExpandedCells;
+
+	if (! RoomData)
+	{
+		return ExpandedCells;
+	}
+
+	// 1. Expand all rectangular regions into individual cells
+	for (const FForcedEmptyRegion& Region : RoomData->ForcedEmptyRegions)
+	{
+		// Calculate bounding box (handles any corner order)
+		int32 MinX = FMath::Min(Region.StartCell.X, Region.EndCell. X);
+		int32 MaxX = FMath::Max(Region.StartCell.X, Region.EndCell.X);
+		int32 MinY = FMath::Min(Region.StartCell.Y, Region.EndCell. Y);
+		int32 MaxY = FMath::Max(Region.StartCell.Y, Region.EndCell.Y);
+
+		// Clamp to valid grid bounds
+		MinX = FMath:: Clamp(MinX, 0, GridSize.X - 1);
+		MaxX = FMath::Clamp(MaxX, 0, GridSize.X - 1);
+		MinY = FMath::Clamp(MinY, 0, GridSize.Y - 1);
+		MaxY = FMath:: Clamp(MaxY, 0, GridSize.Y - 1);
+
+		// Add all cells within the rectangular region
+		for (int32 Y = MinY; Y <= MaxY; ++Y)
+		{
+			for (int32 X = MinX; X <= MaxX; ++X)
+			{
+				FIntPoint Cell(X, Y);
+				ExpandedCells.AddUnique(Cell); // AddUnique prevents duplicates
+			}
+		}
+	}
+
+	// 2. Add individual forced empty cells
+	for (const FIntPoint& Cell : RoomData->ForcedEmptyFloorCells)
+	{
+		// Validate cell is within grid bounds
+		if (Cell.X >= 0 && Cell.X < GridSize.X && Cell.Y >= 0 && Cell.Y < GridSize.Y)
+		{
+			ExpandedCells.AddUnique(Cell);
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator:: ExpandForcedEmptyRegions - Expanded to %d cells"), ExpandedCells.Num());
+
+	return ExpandedCells;
+}
+
+void URoomGenerator::MarkForcedEmptyCells(const TArray<FIntPoint>& EmptyCells)
+{
+	for (const FIntPoint& Cell :  EmptyCells)
+	{
+		// Mark as Wall type (reserved/boundary marker)
+		SetCellState(Cell, EGridCellType::ECT_Wall);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::MarkForcedEmptyCells - Marked %d cells as empty"), EmptyCells.Num());
 }
 
 // ============================================================================
