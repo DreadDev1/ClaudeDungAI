@@ -23,7 +23,7 @@ ARoomSpawner::ARoomSpawner()
 
 
 #if WITH_EDITOR
-#pragma region Editor Functions
+#pragma region In Editor Functions
 void ARoomSpawner::GenerateRoomGrid()
 {
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE ROOM GRID"));

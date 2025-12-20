@@ -101,25 +101,27 @@ private:
 	// Room generator instance (logic layer)
 	UPROPERTY()
 	URoomGenerator* RoomGenerator;
-	
-	// Track spawned floor mesh instances
-	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> FloorMeshComponents;
 
 	// Flag to track if room is generated
 	bool bIsGenerated;
 
 	/* Initialize the room generator */
 	bool InitializeGenerator();
-
-	/* Update visualization based on current grid state */
-	void UpdateVisualization();
+	
+	// Track spawned floor mesh instances
+	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> FloorMeshComponents;
 
 	// Helper functions
 	void SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVector& RoomOrigin);
 	
+#pragma region Debug Functions
+	/* Update visualization based on current grid state */
+	void UpdateVisualization();
+
 	/* Log room statistics to output */
 	void LogRoomStatistics();
 
 	/* Log floor statistics to output */
 	void LogFloorStatistics();
+#pragma endregion
 };
