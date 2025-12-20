@@ -53,191 +53,88 @@ class CLAUDEDUNGAI_API URoomGenerator : public UObject
 	GENERATED_BODY()
 
 public:
-	// ============================================================================
-	// INITIALIZATION
-	// ============================================================================
-
-	/**
-	 * Initialize the room generator with room data
-	 * @param InRoomData - The room configuration data asset
-	 * @return True if initialization successful
-	 */
+	/* Initialize the room generator with room data */
 	bool Initialize(URoomData* InRoomData);
 
-	/**
-	 * Check if generator is properly initialized
-	 */
+	/* Check if generator is properly initialized */
 	bool IsInitialized() const { return bIsInitialized; }
 
-	// ============================================================================
-	// GRID MANAGEMENT
-	// ============================================================================
+#pragma region Room Grid Management
 
-	/**
-	 * Create the grid based on RoomData dimensions
-	 * Initializes all cells to Empty state
-	 */
 	void CreateGrid();
-
-	/**
-	 * Clear the grid (reset all cells to Empty)
-	 */
 	void ClearGrid();
-
-	/**
-	 * Get the current grid state
-	 */
 	const TArray<EGridCellType>& GetGridState() const { return GridState; }
-
-	/**
-	 * Get the grid size
-	 */
 	FIntPoint GetGridSize() const { return GridSize; }
-
-	/**
-	 * Get the cell size
-	 */
 	float GetCellSize() const { return CellSize; }
-
-	/**
-	 * Get cell state at specific coordinate
-	 * @param GridCoord - The grid coordinate to query
-	 * @return Cell type at that coordinate, or Empty if out of bounds
-	 */
 	EGridCellType GetCellState(FIntPoint GridCoord) const;
-
-	/**
-	 * Set cell state at specific coordinate
-	 * @param GridCoord - The grid coordinate to set
-	 * @param NewState - The new state for this cell
-	 * @return True if successful, false if out of bounds
-	 */
 	bool SetCellState(FIntPoint GridCoord, EGridCellType NewState);
-
-	/**
-	 * Check if a grid coordinate is valid
-	 */
 	bool IsValidGridCoordinate(FIntPoint GridCoord) const;
-
-	/**
-	 * Check if a rectangular area is available (all cells Empty)
-	 * @param StartCoord - Top-left corner of area
-	 * @param Size - Size of area in cells (X, Y)
-	 * @return True if all cells in area are Empty
-	 */
 	bool IsAreaAvailable(FIntPoint StartCoord, FIntPoint Size) const;
 
-	/**
-	 * Mark a rectangular area as occupied
-	 * @param StartCoord - Top-left corner of area
-	 * @param Size - Size of area in cells (X, Y)
-	 * @param CellType - Type to mark cells as
-	 * @return True if successful
-	 */
+	/* Mark a rectangular area as occupied
+	 * @param StartCoord - Top-left corner of area @param Size - Size of area in cells (X, Y)
+	 * @param CellType - Type to mark cells as @return True if successful */
 	bool MarkArea(FIntPoint StartCoord, FIntPoint Size, EGridCellType CellType);
 
-	/**
-	 * Clear a rectangular area (set to Empty)
-	 * @param StartCoord - Top-left corner of area
-	 * @param Size - Size of area in cells (X, Y)
-	 * @return True if successful
-	 */
+	/*Clear a rectangular area (set to Empty) 
+	 * @param StartCoord - Top-left corner of area @param Size - Size of area in cells (X, Y)
+	 * @return True if successful*/
 	bool ClearArea(FIntPoint StartCoord, FIntPoint Size);
 
-	// ============================================================================
-	// FLOOR GENERATION
-	// ============================================================================
+#pragma endregion
+	
+#pragma region Floor Generation
 
-	/**
-	 * Generate floor meshes using sequential weighted fill algorithm
-	 * @return True if generation successful
-	 */
+	/* Generate floor meshes using sequential weighted fill algorithm */
 	bool GenerateFloor();
 
-	/**
-	 * Get list of placed floor meshes
-	 */
+	/* Get list of placed floor meshes */
 	const TArray<FPlacedMeshInfo>& GetPlacedFloorMeshes() const { return PlacedFloorMeshes; }
 
-	/**
-	 * Clear all placed floor meshes
-	 */
+	/* Clear all placed floor meshes */
 	void ClearPlacedFloorMeshes();
 
-	/**
-	 * Get floor generation statistics
-	 */
+	/* Get floor generation statistics */
 	void GetFloorStatistics(int32& OutLargeTiles, int32& OutMediumTiles, int32& OutSmallTiles, int32& OutFillerTiles) const;
 
-	/**
- * Execute forced placements from RoomData
- * Places designer-specified meshes at exact coordinates before random fill
- * @return Number of forced placements successfully placed
- */
+	/* Execute forced placements from RoomData
+	 * Places designer-specified meshes at exact coordinates before random fill */
 	int32 ExecuteForcedPlacements();
 
 	/**
 	 * Expand forced empty regions into individual cell list
-	 * Combines rectangular regions and individual cells into unified list
-	 * @return Array of all cells that should remain empty
-	 */
+	 * Combines rectangular regions and individual cells into unified list */
 	TArray<FIntPoint> ExpandForcedEmptyRegions() const;
 
-	/**
-	 * Mark forced empty cells as reserved (blocked from placement)
-	 * @param EmptyCells - List of cells to mark as empty/reserved
-	 */
+	/* Mark forced empty cells as reserved (blocked from placement) */
 	void MarkForcedEmptyCells(const TArray<FIntPoint>& EmptyCells);
-	
-	// ============================================================================
-	// COORDINATE CONVERSION HELPERS
-	// ============================================================================
+#pragma endregion
 
-	/**
-	 * Convert grid coordinates to local position (center of cell)
-	 * @param GridCoord - Grid coordinate (X, Y)
-	 * @return Local position in cm from room origin
-	 */
+#pragma region Coordinate Conversion
+	/* Convert grid coordinates to local position (center of cell) */
 	FVector GridToLocalPosition(FIntPoint GridCoord) const;
 
-	/**
-	 * Convert local position to grid coordinates
-	 * @param LocalPos - Local position in cm from room origin
-	 * @return Grid coordinate (floored)
-	 */
+	/* Convert local position to grid coordinates */
 	FIntPoint LocalToGridPosition(FVector LocalPos) const;
 
-	/**
-	 * Get rotated footprint based on rotation angle
-	 * @param OriginalFootprint - Original mesh footprint
-	 * @param Rotation - Rotation angle (0, 90, 180, 270)
-	 * @return Rotated footprint (swaps X/Y for 90/270)
-	 */
+	/* Get rotated footprint based on rotation angle */
 	static FIntPoint GetRotatedFootprint(FIntPoint OriginalFootprint, int32 Rotation);
+#pragma endregion
 
-	// ============================================================================
-	// STATISTICS
-	// ============================================================================
+#pragma region Room Statistics
 
-	/**
-	 * Get count of cells by type
-	 */
+	/* Get count of cells by type */
 	int32 GetCellCountByType(EGridCellType CellType) const;
 
-	/**
-	 * Get percentage of grid occupied
-	 */
+	/* Get percentage of grid occupied */
 	float GetOccupancyPercentage() const;
 
-	/**
-	 * Get total cell count
-	 */
+	/* Get total cell count */
 	int32 GetTotalCellCount() const { return GridSize.X * GridSize.Y; }
-
+#pragma endregion
+	
 private:
-	// ============================================================================
-	// INTERNAL DATA
-	// ============================================================================
+#pragma region Internal Data
 
 	// Reference to room configuration data
 	UPROPERTY()
@@ -265,7 +162,9 @@ private:
 	int32 MediumTilesPlaced;
 	int32 SmallTilesPlaced;
 	int32 FillerTilesPlaced;
-	
+#pragma endregion
+
+#pragma region Internal Floor Generation Functions
 	// ============================================================================
 	// INTERNAL FLOOR GENERATION HELPERS
 	// ============================================================================
@@ -300,18 +199,13 @@ private:
 	 * @return Footprint size in cells
 	 */
 	FIntPoint CalculateFootprint(const FMeshPlacementInfo& MeshInfo) const;
+#pragma endregion
 
-	// ============================================================================
-	// INTERNAL HELPERS
-	// ============================================================================
-
-	/**
-	 * Convert 2D grid coordinate to 1D array index
-	 */
+#pragma region Internal Helpers
+	/* Convert 2D grid coordinate to 1D array index */
 	int32 GridCoordToIndex(FIntPoint GridCoord) const;
 
-	/**
-	 * Convert 1D array index to 2D grid coordinate
-	 */
+	/* Convert 1D array index to 2D grid coordinate */
 	FIntPoint IndexToGridCoord(int32 Index) const;
+#pragma endregion
 };

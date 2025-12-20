@@ -3,10 +3,6 @@
 #include "Generators/Room/RoomGenerator.h"
 #include "Data/Grid/GridData.h"
 
-// ============================================================================
-// INITIALIZATION
-// ============================================================================
-
 bool URoomGenerator::Initialize(URoomData* InRoomData)
 {
 	if (!InRoomData)
@@ -32,9 +28,7 @@ bool URoomGenerator::Initialize(URoomData* InRoomData)
 	return true;
 }
 
-// ============================================================================
-// GRID MANAGEMENT
-// ============================================================================
+#pragma region Room Grid Management
 
 void URoomGenerator::CreateGrid()
 {
@@ -174,10 +168,9 @@ bool URoomGenerator::ClearArea(FIntPoint StartCoord, FIntPoint Size)
 	return true;
 }
 
-// ============================================================================
-// FLOOR GENERATION
-// ============================================================================
+#pragma endregion
 
+#pragma region Floor Generation
 bool URoomGenerator::GenerateFloor()
 {
 	if (!bIsInitialized)
@@ -254,6 +247,159 @@ bool URoomGenerator::GenerateFloor()
 
 	return true;
 }
+
+void URoomGenerator::ClearPlacedFloorMeshes()
+{
+	PlacedFloorMeshes. Empty();
+	LargeTilesPlaced = 0;
+	MediumTilesPlaced = 0;
+	SmallTilesPlaced = 0;
+	FillerTilesPlaced = 0;
+}
+
+void URoomGenerator::GetFloorStatistics(int32& OutLargeTiles, int32& OutMediumTiles, int32& OutSmallTiles, int32& OutFillerTiles) const
+{
+	OutLargeTiles = LargeTilesPlaced;
+	OutMediumTiles = MediumTilesPlaced;
+	OutSmallTiles = SmallTilesPlaced;
+	OutFillerTiles = FillerTilesPlaced;
+}
+
+int32 URoomGenerator::ExecuteForcedPlacements()
+{
+	if (!bIsInitialized || !RoomData)
+	{
+		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::ExecuteForcedPlacements - Not initialized! "));
+		return 0;
+	}
+
+	int32 SuccessfulPlacements = 0;
+	const TMap<FIntPoint, FMeshPlacementInfo>& ForcedPlacements = RoomData->ForcedInteriorPlacements;
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedPlacements - Processing %d forced placements"), ForcedPlacements. Num());
+
+	for (const auto& Pair : ForcedPlacements)
+	{
+		const FIntPoint StartCoord = Pair.Key;
+		const FMeshPlacementInfo& MeshInfo = Pair.Value;
+
+		// Validate mesh asset
+		if (MeshInfo.MeshAsset.IsNull())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) has null mesh asset - skipping"), 
+				StartCoord.X, StartCoord.Y);
+			continue;
+		}
+
+		// Calculate footprint
+		FIntPoint Footprint = CalculateFootprint(MeshInfo);
+
+		// Select rotation (use first allowed rotation for forced placements)
+		int32 Rotation = 0;
+		if (MeshInfo.AllowedRotations.Num() > 0)
+		{
+			Rotation = MeshInfo. AllowedRotations[0];
+		}
+
+		// Apply rotation to footprint
+		FIntPoint RotatedFootprint = GetRotatedFootprint(Footprint, Rotation);
+
+		// Validate bounds
+		if (StartCoord.X + RotatedFootprint.X > GridSize.X || 
+		    StartCoord.Y + RotatedFootprint.Y > GridSize.Y)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) is out of bounds (size %dx%d) - skipping"), 
+				StartCoord.X, StartCoord.Y, RotatedFootprint.X, RotatedFootprint.Y);
+			continue;
+		}
+
+		// Check if area is available
+		if (! IsAreaAvailable(StartCoord, RotatedFootprint))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) overlaps existing placement - skipping"), 
+				StartCoord.X, StartCoord.Y);
+			continue;
+		}
+
+		// Place the mesh
+		if (TryPlaceMesh(StartCoord, RotatedFootprint, MeshInfo, Rotation))
+		{
+			SuccessfulPlacements++;
+			UE_LOG(LogTemp, Verbose, TEXT("  Placed forced mesh at (%d,%d) size %dx%d"), 
+				StartCoord.X, StartCoord.Y, RotatedFootprint.X, RotatedFootprint.Y);
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedPlacements - Placed %d/%d forced meshes"), 
+		SuccessfulPlacements, ForcedPlacements.Num());
+
+	return SuccessfulPlacements;
+}
+
+TArray<FIntPoint> URoomGenerator::ExpandForcedEmptyRegions() const
+{
+	TArray<FIntPoint> ExpandedCells;
+
+	if (! RoomData)
+	{
+		return ExpandedCells;
+	}
+
+	// 1. Expand all rectangular regions into individual cells
+	for (const FForcedEmptyRegion& Region : RoomData->ForcedEmptyRegions)
+	{
+		// Calculate bounding box (handles any corner order)
+		int32 MinX = FMath::Min(Region.StartCell.X, Region.EndCell. X);
+		int32 MaxX = FMath::Max(Region.StartCell.X, Region.EndCell.X);
+		int32 MinY = FMath::Min(Region.StartCell.Y, Region.EndCell. Y);
+		int32 MaxY = FMath::Max(Region.StartCell.Y, Region.EndCell.Y);
+
+		// Clamp to valid grid bounds
+		MinX = FMath:: Clamp(MinX, 0, GridSize.X - 1);
+		MaxX = FMath::Clamp(MaxX, 0, GridSize.X - 1);
+		MinY = FMath::Clamp(MinY, 0, GridSize.Y - 1);
+		MaxY = FMath:: Clamp(MaxY, 0, GridSize.Y - 1);
+
+		// Add all cells within the rectangular region
+		for (int32 Y = MinY; Y <= MaxY; ++Y)
+		{
+			for (int32 X = MinX; X <= MaxX; ++X)
+			{
+				FIntPoint Cell(X, Y);
+				ExpandedCells.AddUnique(Cell); // AddUnique prevents duplicates
+			}
+		}
+	}
+
+	// 2. Add individual forced empty cells
+	for (const FIntPoint& Cell : RoomData->ForcedEmptyFloorCells)
+	{
+		// Validate cell is within grid bounds
+		if (Cell.X >= 0 && Cell.X < GridSize.X && Cell.Y >= 0 && Cell.Y < GridSize.Y)
+		{
+			ExpandedCells.AddUnique(Cell);
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator:: ExpandForcedEmptyRegions - Expanded to %d cells"), ExpandedCells.Num());
+
+	return ExpandedCells;
+}
+
+void URoomGenerator::MarkForcedEmptyCells(const TArray<FIntPoint>& EmptyCells)
+{
+	for (const FIntPoint& Cell :  EmptyCells)
+	{
+		// Mark as Wall type (reserved/boundary marker)
+		SetCellState(Cell, EGridCellType::ECT_Wall);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::MarkForcedEmptyCells - Marked %d cells as empty"), EmptyCells.Num());
+}
+
+#pragma endregion
+
+#pragma region Internal Floor Generation
 
 void URoomGenerator::FillWithTileSize(const TArray<FMeshPlacementInfo>& TilePool, FIntPoint TargetSize)
 {
@@ -409,160 +555,9 @@ FIntPoint URoomGenerator::CalculateFootprint(const FMeshPlacementInfo& MeshInfo)
 	// Fallback
 	return FIntPoint(1, 1);
 }
+#pragma endregion
 
-void URoomGenerator::ClearPlacedFloorMeshes()
-{
-	PlacedFloorMeshes. Empty();
-	LargeTilesPlaced = 0;
-	MediumTilesPlaced = 0;
-	SmallTilesPlaced = 0;
-	FillerTilesPlaced = 0;
-}
-
-void URoomGenerator::GetFloorStatistics(int32& OutLargeTiles, int32& OutMediumTiles, int32& OutSmallTiles, int32& OutFillerTiles) const
-{
-	OutLargeTiles = LargeTilesPlaced;
-	OutMediumTiles = MediumTilesPlaced;
-	OutSmallTiles = SmallTilesPlaced;
-	OutFillerTiles = FillerTilesPlaced;
-}
-
-int32 URoomGenerator::ExecuteForcedPlacements()
-{
-	if (!bIsInitialized || !RoomData)
-	{
-		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::ExecuteForcedPlacements - Not initialized! "));
-		return 0;
-	}
-
-	int32 SuccessfulPlacements = 0;
-	const TMap<FIntPoint, FMeshPlacementInfo>& ForcedPlacements = RoomData->ForcedInteriorPlacements;
-
-	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedPlacements - Processing %d forced placements"), ForcedPlacements. Num());
-
-	for (const auto& Pair : ForcedPlacements)
-	{
-		const FIntPoint StartCoord = Pair.Key;
-		const FMeshPlacementInfo& MeshInfo = Pair.Value;
-
-		// Validate mesh asset
-		if (MeshInfo.MeshAsset.IsNull())
-		{
-			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) has null mesh asset - skipping"), 
-				StartCoord.X, StartCoord.Y);
-			continue;
-		}
-
-		// Calculate footprint
-		FIntPoint Footprint = CalculateFootprint(MeshInfo);
-
-		// Select rotation (use first allowed rotation for forced placements)
-		int32 Rotation = 0;
-		if (MeshInfo.AllowedRotations.Num() > 0)
-		{
-			Rotation = MeshInfo. AllowedRotations[0];
-		}
-
-		// Apply rotation to footprint
-		FIntPoint RotatedFootprint = GetRotatedFootprint(Footprint, Rotation);
-
-		// Validate bounds
-		if (StartCoord.X + RotatedFootprint.X > GridSize.X || 
-		    StartCoord.Y + RotatedFootprint.Y > GridSize.Y)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) is out of bounds (size %dx%d) - skipping"), 
-				StartCoord.X, StartCoord.Y, RotatedFootprint.X, RotatedFootprint.Y);
-			continue;
-		}
-
-		// Check if area is available
-		if (! IsAreaAvailable(StartCoord, RotatedFootprint))
-		{
-			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) overlaps existing placement - skipping"), 
-				StartCoord.X, StartCoord.Y);
-			continue;
-		}
-
-		// Place the mesh
-		if (TryPlaceMesh(StartCoord, RotatedFootprint, MeshInfo, Rotation))
-		{
-			SuccessfulPlacements++;
-			UE_LOG(LogTemp, Verbose, TEXT("  Placed forced mesh at (%d,%d) size %dx%d"), 
-				StartCoord.X, StartCoord.Y, RotatedFootprint.X, RotatedFootprint.Y);
-		}
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedPlacements - Placed %d/%d forced meshes"), 
-		SuccessfulPlacements, ForcedPlacements.Num());
-
-	return SuccessfulPlacements;
-}
-
-TArray<FIntPoint> URoomGenerator::ExpandForcedEmptyRegions() const
-{
-	TArray<FIntPoint> ExpandedCells;
-
-	if (! RoomData)
-	{
-		return ExpandedCells;
-	}
-
-	// 1. Expand all rectangular regions into individual cells
-	for (const FForcedEmptyRegion& Region : RoomData->ForcedEmptyRegions)
-	{
-		// Calculate bounding box (handles any corner order)
-		int32 MinX = FMath::Min(Region.StartCell.X, Region.EndCell. X);
-		int32 MaxX = FMath::Max(Region.StartCell.X, Region.EndCell.X);
-		int32 MinY = FMath::Min(Region.StartCell.Y, Region.EndCell. Y);
-		int32 MaxY = FMath::Max(Region.StartCell.Y, Region.EndCell.Y);
-
-		// Clamp to valid grid bounds
-		MinX = FMath:: Clamp(MinX, 0, GridSize.X - 1);
-		MaxX = FMath::Clamp(MaxX, 0, GridSize.X - 1);
-		MinY = FMath::Clamp(MinY, 0, GridSize.Y - 1);
-		MaxY = FMath:: Clamp(MaxY, 0, GridSize.Y - 1);
-
-		// Add all cells within the rectangular region
-		for (int32 Y = MinY; Y <= MaxY; ++Y)
-		{
-			for (int32 X = MinX; X <= MaxX; ++X)
-			{
-				FIntPoint Cell(X, Y);
-				ExpandedCells.AddUnique(Cell); // AddUnique prevents duplicates
-			}
-		}
-	}
-
-	// 2. Add individual forced empty cells
-	for (const FIntPoint& Cell : RoomData->ForcedEmptyFloorCells)
-	{
-		// Validate cell is within grid bounds
-		if (Cell.X >= 0 && Cell.X < GridSize.X && Cell.Y >= 0 && Cell.Y < GridSize.Y)
-		{
-			ExpandedCells.AddUnique(Cell);
-		}
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("URoomGenerator:: ExpandForcedEmptyRegions - Expanded to %d cells"), ExpandedCells.Num());
-
-	return ExpandedCells;
-}
-
-void URoomGenerator::MarkForcedEmptyCells(const TArray<FIntPoint>& EmptyCells)
-{
-	for (const FIntPoint& Cell :  EmptyCells)
-	{
-		// Mark as Wall type (reserved/boundary marker)
-		SetCellState(Cell, EGridCellType::ECT_Wall);
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::MarkForcedEmptyCells - Marked %d cells as empty"), EmptyCells.Num());
-}
-
-// ============================================================================
-// COORDINATE CONVERSION
-// ============================================================================
-
+#pragma region Coordinate Conversion
 FVector URoomGenerator::GridToLocalPosition(FIntPoint GridCoord) const
 {
 	// Calculate center of cell
@@ -596,10 +591,9 @@ FIntPoint URoomGenerator::GetRotatedFootprint(FIntPoint OriginalFootprint, int32
 	// For 0 and 180 degree rotations, keep original
 	return OriginalFootprint;
 }
+#pragma endregion
 
-// ============================================================================
-// STATISTICS
-// ============================================================================
+#pragma region Room Statistics
 
 int32 URoomGenerator::GetCellCountByType(EGridCellType CellType) const
 {
@@ -622,10 +616,9 @@ float URoomGenerator::GetOccupancyPercentage() const
 	int32 OccupiedCells = GetCellCountByType(EGridCellType::ECT_FloorMesh);
 	return (static_cast<float>(OccupiedCells) / static_cast<float>(TotalCells)) * 100.0f;
 }
+#pragma endregion
 
-// ============================================================================
-// INTERNAL HELPERS
-// ============================================================================
+#pragma region Internal Helpers
 
 int32 URoomGenerator::GridCoordToIndex(FIntPoint GridCoord) const
 {
@@ -640,3 +633,4 @@ FIntPoint URoomGenerator:: IndexToGridCoord(int32 Index) const
 	int32 Y = Index / GridSize.X;
 	return FIntPoint(X, Y);
 }
+#pragma endregion
