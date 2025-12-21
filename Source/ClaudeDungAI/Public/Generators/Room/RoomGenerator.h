@@ -101,6 +101,9 @@ public:
 	 * Places designer-specified meshes at exact coordinates before random fill */
 	int32 ExecuteForcedPlacements();
 
+	/* Fill remaining empty cells with meshes from the pool */
+	int32 FillRemainingGaps(const TArray<FMeshPlacementInfo>& TilePool);
+
 	/**
 	 * Expand forced empty regions into individual cell list
 	 * Combines rectangular regions and individual cells into unified list */

@@ -242,8 +242,20 @@ bool URoomGenerator::GenerateFloor()
 	FillWithTileSize(FloorMeshes, FIntPoint(2, 1)); // 200x100
 	FillWithTileSize(FloorMeshes, FIntPoint(1, 1)); // 100x100
 
-	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateFloor - Floor generation complete.  Placed %d total meshes"), 
-		PlacedFloorMeshes.Num());
+	// ========================================================================
+	// PHASE 3: GAP FILL (Fill remaining empty cells with any available mesh)
+	// ========================================================================
+	int32 GapFillCount = FillRemainingGaps(FloorMeshes);
+	UE_LOG(LogTemp, Log, TEXT("  Phase 3: Filled %d remaining gaps"), GapFillCount);
+
+	// ========================================================================
+	// FINAL STATISTICS
+	// ========================================================================
+	int32 RemainingEmpty = GetCellCountByType(EGridCellType::ECT_Empty);
+	
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateFloor - Floor generation complete"));
+	UE_LOG(LogTemp, Log, TEXT("  Total meshes placed: %d"), PlacedFloorMeshes.Num());
+	UE_LOG(LogTemp, Log, TEXT("  Remaining empty cells: %d"), RemainingEmpty);
 
 	return true;
 }
@@ -336,6 +348,120 @@ int32 URoomGenerator::ExecuteForcedPlacements()
 	return SuccessfulPlacements;
 }
 
+int32 URoomGenerator::FillRemainingGaps(const TArray<FMeshPlacementInfo>& TilePool)
+{
+	if (TilePool.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("URoomGenerator:: FillRemainingGaps - No meshes in tile pool! "));
+		return 0;
+	}
+
+	int32 PlacedCount = 0;
+
+	// Define sizes to try (largest to smallest for efficiency)
+	TArray<FIntPoint> SizesToTry = {
+		FIntPoint(1, 4), // 100x400
+		FIntPoint(4, 1), // 400x100
+		FIntPoint(1, 2), // 100x200
+		FIntPoint(2, 1), // 200x100
+		FIntPoint(1, 1)  // 100x100
+	};
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::FillRemainingGaps - Starting gap fill"));
+
+	// Try each size in order
+	for (const FIntPoint& TargetSize : SizesToTry)
+	{
+		// Filter tiles that match this size
+		TArray<FMeshPlacementInfo> MatchingTiles;
+
+		for (const FMeshPlacementInfo& MeshInfo : TilePool)
+		{
+			FIntPoint Footprint = CalculateFootprint(MeshInfo);
+
+			// Check if footprint matches target size (or rotated version)
+			if ((Footprint.X == TargetSize.X && Footprint.Y == TargetSize.Y) ||
+				(Footprint.X == TargetSize.Y && Footprint. Y == TargetSize.X))
+			{
+				MatchingTiles.Add(MeshInfo);
+			}
+		}
+
+		if (MatchingTiles.Num() == 0)
+		{
+			continue; // No tiles of this size, try next
+		}
+
+		int32 SizePlacedCount = 0;
+
+		// Try to place tiles of this size in all empty spaces
+		for (int32 Y = 0; Y < GridSize.Y; ++Y)
+		{
+			for (int32 X = 0; X < GridSize.X; ++X)
+			{
+				FIntPoint StartCoord(X, Y);
+
+				// Check if area is available
+				if (IsAreaAvailable(StartCoord, TargetSize))
+				{
+					// Select weighted random mesh
+					FMeshPlacementInfo SelectedMesh = SelectWeightedMesh(MatchingTiles);
+					FIntPoint OriginalFootprint = CalculateFootprint(SelectedMesh);
+
+					// Find rotation that matches target size
+					int32 BestRotation = 0;
+					
+					if (SelectedMesh.AllowedRotations.Num() > 0)
+					{
+						// Build list of rotations that would fit the target size
+						TArray<int32> ValidRotations;
+
+						for (int32 Rotation : SelectedMesh.AllowedRotations)
+						{
+							FIntPoint RotatedFootprint = GetRotatedFootprint(OriginalFootprint, Rotation);
+							
+							if (RotatedFootprint.X == TargetSize.X && RotatedFootprint.Y == TargetSize.Y)
+							{
+								ValidRotations.Add(Rotation);
+							}
+						}
+
+						// Select random rotation from valid options
+						if (ValidRotations.Num() > 0)
+						{
+							int32 RandomIndex = FMath::RandRange(0, ValidRotations.Num() - 1);
+							BestRotation = ValidRotations[RandomIndex];
+						}
+					}
+
+					// Try to place mesh with rotation
+					if (TryPlaceMesh(StartCoord, TargetSize, SelectedMesh, BestRotation))
+					{
+						SizePlacedCount++;
+						PlacedCount++;
+
+						// Update statistics
+						int32 TileArea = TargetSize.X * TargetSize.Y;
+						if (TileArea >= 16) LargeTilesPlaced++;
+						else if (TileArea >= 4) MediumTilesPlaced++;
+						else if (TileArea >= 2) SmallTilesPlaced++;
+						else FillerTilesPlaced++;
+					}
+				}
+			}
+		}
+
+		if (SizePlacedCount > 0)
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("  Filled %d gaps with %dx%d tiles"), SizePlacedCount, TargetSize. X, TargetSize.Y);
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::FillRemainingGaps - Placed %d gap-fill meshes"), PlacedCount);
+
+	return PlacedCount;
+}
+
 TArray<FIntPoint> URoomGenerator::ExpandForcedEmptyRegions() const
 {
 	TArray<FIntPoint> ExpandedCells;
@@ -411,19 +537,19 @@ void URoomGenerator::FillWithTileSize(const TArray<FMeshPlacementInfo>& TilePool
 		FIntPoint Footprint = CalculateFootprint(MeshInfo);
 
 		// Check if footprint matches target size (or rotated version)
-		if ((Footprint.X == TargetSize.X && Footprint.Y == TargetSize. Y) ||
-			(Footprint.X == TargetSize.Y && Footprint.Y == TargetSize.X))
+		if ((Footprint.X == TargetSize.X && Footprint.Y == TargetSize.Y) ||
+			(Footprint.X == TargetSize.Y && Footprint. Y == TargetSize.X))
 		{
 			MatchingTiles.Add(MeshInfo);
 		}
 	}
 
-	if (MatchingTiles. Num() == 0)
+	if (MatchingTiles.Num() == 0)
 	{
 		return; // No tiles of this size
 	}
 
-	UE_LOG(LogTemp, Verbose, TEXT("URoomGenerator:: FillWithTileSize - Filling with %dx%d tiles (%d options)"), 
+	UE_LOG(LogTemp, Verbose, TEXT("URoomGenerator::FillWithTileSize - Filling with %dx%d tiles (%d options)"), 
 		TargetSize.X, TargetSize.Y, MatchingTiles.Num());
 
 	// Try to place tiles of this size across the grid
@@ -433,14 +559,41 @@ void URoomGenerator::FillWithTileSize(const TArray<FMeshPlacementInfo>& TilePool
 		{
 			FIntPoint StartCoord(X, Y);
 
-			// Check if area is available
+			// Check if area is available for target size
 			if (IsAreaAvailable(StartCoord, TargetSize))
 			{
 				// Select weighted random mesh
 				FMeshPlacementInfo SelectedMesh = SelectWeightedMesh(MatchingTiles);
+				FIntPoint OriginalFootprint = CalculateFootprint(SelectedMesh);
 
-				// Try to place mesh
-				if (TryPlaceMesh(StartCoord, TargetSize, SelectedMesh, 0))
+				// Find rotation that matches target size
+				int32 BestRotation = 0;
+				
+				if (SelectedMesh.AllowedRotations.Num() > 0)
+				{
+					// Build list of rotations that would fit the target size
+					TArray<int32> ValidRotations;
+
+					for (int32 Rotation :  SelectedMesh.AllowedRotations)
+					{
+						FIntPoint RotatedFootprint = GetRotatedFootprint(OriginalFootprint, Rotation);
+						
+						if (RotatedFootprint.X == TargetSize.X && RotatedFootprint.Y == TargetSize.Y)
+						{
+							ValidRotations.Add(Rotation);
+						}
+					}
+
+					// Select random rotation from valid options
+					if (ValidRotations.Num() > 0)
+					{
+						int32 RandomIndex = FMath::RandRange(0, ValidRotations.Num() - 1);
+						BestRotation = ValidRotations[RandomIndex];
+					}
+				}
+
+				// Try to place mesh with selected rotation
+				if (TryPlaceMesh(StartCoord, TargetSize, SelectedMesh, BestRotation))
 				{
 					// Update statistics
 					int32 TileArea = TargetSize.X * TargetSize.Y;
