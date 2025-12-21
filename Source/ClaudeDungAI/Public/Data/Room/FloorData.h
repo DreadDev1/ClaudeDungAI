@@ -14,9 +14,16 @@ class CLAUDEDUNGAI_API UFloorData : public UDataAsset
 	GENERATED_BODY()
 
 public:
-	// --- Base Floor Tiles ---
-	
-	// A collection of floor tiles/meshes used to fill the grid (e.g., 100x100, 200x200 tiles)
+	// Pool of floor tiles with placement weights and footprints
+	// 
+	// DESIGNER NOTE: Include tiles of ALL sizes in this pool: 
+	//   - Large tiles (4x4, 2x4, 4x2) for main floor coverage
+	//   - Medium tiles (2x2) for mid-sized gaps
+	//   - Small tiles (1x2, 2x1) for narrow gaps
+	//   - Filler tiles (1x1) for single-cell gaps
+	//
+	// The generator will automatically select appropriate sizes based on available space. 
+	// Use PlacementWeight to control how often each tile appears.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Floor Tiles")
 	TArray<FMeshPlacementInfo> FloorTilePool;
 
@@ -30,8 +37,4 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Floor Clutter")
 	float ClutterPlacementChance = 0.25f;
 
-	// --- GAP FILLER TILE (NEW) ---
-	// A specific 1x1 mesh used to fill any remaining empty cells after the main randomized pass.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Floor Tiles")
-	TSoftObjectPtr<UStaticMesh> DefaultFillerTile;
 };
