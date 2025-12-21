@@ -156,14 +156,21 @@ void UDebugHelpers::DrawCellBox(FIntPoint GridCoord, FColor Color, float CellSiz
 
 void UDebugHelpers::DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, float CellSize, FVector OriginLocation)
 {
-	if (!OnCreateTextComponent.IsBound())
+	// ✅ ALWAYS clear existing text components first (moved BEFORE the check)
+	ClearCoordinateTextComponents();
+
+	// NOW check if we should create new ones
+	if (! bShowCoordinates)
 	{
-		LogCritical(TEXT("DrawGridCoordinatesWithTextComponents:  OnCreateTextComponent delegate not bound!"));
+		// Coordinates are hidden - don't create new ones
 		return;
 	}
 
-	// Clear existing text components first
-	ClearCoordinateTextComponents();
+	if (! OnCreateTextComponent. IsBound())
+	{
+		LogCritical(TEXT("DrawGridCoordinatesWithTextComponents:   OnCreateTextComponent delegate not bound!"));
+		return;
+	}
 
 	LogVerbose(FString::Printf(TEXT("Creating coordinate text components for %dx%d grid"), GridSize.X, GridSize.Y));
 
@@ -196,7 +203,7 @@ void UDebugHelpers::DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, fl
 		}
 	}
 
-	LogImportant(FString::Printf(TEXT("Created %d coordinate text components"), CoordinateTextComponents. Num()));
+	LogImportant(FString::Printf(TEXT("Created %d coordinate text components"), CoordinateTextComponents.Num()));
 }
 
 FColor UDebugHelpers:: GetColorForCellType(EGridCellType CellType) const
@@ -243,11 +250,27 @@ void UDebugHelpers::ClearDebugDrawings()
 
 void UDebugHelpers::ClearCoordinateTextComponents()
 {
-	for (UTextRenderComponent* TextComp : CoordinateTextComponents)
+	// ✅ Use delegate to let owner destroy components (if bound)
+	if (OnDestroyTextComponent.IsBound())
 	{
-		if (TextComp && TextComp->IsValidLowLevel())
+		for (UTextRenderComponent* TextComp : CoordinateTextComponents)
 		{
-			TextComp->DestroyComponent();
+			if (TextComp && TextComp->IsValidLowLevel())
+			{
+				// Request owner to destroy this component
+				OnDestroyTextComponent.Execute(TextComp);
+			}
+		}
+	}
+	else
+	{
+		// Fallback: Try to destroy directly (less reliable)
+		for (UTextRenderComponent* TextComp : CoordinateTextComponents)
+		{
+			if (TextComp && TextComp->IsValidLowLevel())
+			{
+				TextComp->DestroyComponent();
+			}
 		}
 	}
 

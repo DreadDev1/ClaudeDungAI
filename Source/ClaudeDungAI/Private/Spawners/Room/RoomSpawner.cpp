@@ -17,6 +17,10 @@ ARoomSpawner::ARoomSpawner()
 
 	// NEW: Bind delegate so DebugHelpers can request text components
 	DebugHelpers->OnCreateTextComponent.BindUObject(this, &ARoomSpawner::CreateTextRenderComponent);
+
+	// ✅ NEW: Bind destruction delegate
+	DebugHelpers->OnDestroyTextComponent. BindUObject(this, &ARoomSpawner::DestroyTextRenderComponent);
+
 	// Initialize flags
 	bIsGenerated = false;
 }
@@ -312,7 +316,24 @@ UTextRenderComponent* ARoomSpawner::CreateTextRenderComponent(FVector WorldPosit
 	TextComp->SetVisibility(true);
 	TextComp->SetHiddenInGame(false); // Show in PIE too
 
+	// ✅ Track component (optional, for safety)
+	CoordinateTextComponents.Add(TextComp);
+	
 	return TextComp;
+}
+
+void ARoomSpawner::DestroyTextRenderComponent(UTextRenderComponent* TextComp)
+{
+	if (!TextComp || !TextComp->IsValidLowLevel())
+	{
+		return;
+	}
+
+	// Remove from tracking array
+	CoordinateTextComponents. Remove(TextComp);
+
+	// Destroy the component
+	TextComp->DestroyComponent();
 }
 
 void ARoomSpawner::LogRoomStatistics()
@@ -384,10 +405,7 @@ bool ARoomSpawner::InitializeGenerator()
 
 void ARoomSpawner::UpdateVisualization()
 {
-	if (!RoomGenerator || !bIsGenerated)
-	{
-		return;
-	}
+	if (!RoomGenerator) return;
 
 	// Get grid data
 	FVector RoomOrigin = GetActorLocation();
@@ -395,6 +413,7 @@ void ARoomSpawner::UpdateVisualization()
 	float CellSize = RoomGenerator->GetCellSize();
 	const TArray<EGridCellType>& GridState = RoomGenerator->GetGridState();
 
+	DebugHelpers->DrawGrid(GridSize, GridState, CellSize, RoomOrigin);
 
 	// Draw forced empty regions (if any)
 	if (RoomData && RoomData->ForcedEmptyRegions.Num() > 0)

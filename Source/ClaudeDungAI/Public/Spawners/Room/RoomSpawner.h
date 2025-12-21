@@ -29,6 +29,11 @@ public:
 	// Debug visualization component
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UDebugHelpers* DebugHelpers;
+
+	// ✅ OPTIONAL: Track components for additional safety
+	UPROPERTY()
+	TArray<UTextRenderComponent*> CoordinateTextComponents;
+	
 #pragma endregion 
 
 #pragma region Room Generation Properties
@@ -68,12 +73,20 @@ public:
 	UFUNCTION(CallInEditor, Category = "Room Generation|Debug")
 	void ToggleCoordinates();
 
+	
+	
 	/**
 	 * Create a text render component at specified world location
 	 * Called by DebugHelpers via delegate
 	 */
 	UTextRenderComponent* CreateTextRenderComponent(FVector WorldPosition, FString Text, FColor Color, float Scale);
-	
+
+	/**
+	* ✅ NEW: Destroy a text render component
+	* Called by DebugHelpers via delegate
+	*/
+	void DestroyTextRenderComponent(UTextRenderComponent* TextComp);
+
 	/**
 	 * Toggle grid outline display
 	 */
@@ -110,7 +123,6 @@ private:
 	
 	// Track spawned floor mesh instances
 	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> FloorMeshComponents;
-
 	// Helper functions
 	void SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVector& RoomOrigin);
 	

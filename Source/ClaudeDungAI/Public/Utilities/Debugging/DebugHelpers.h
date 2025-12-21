@@ -23,6 +23,9 @@ class UTextRenderComponent;
 // NEW:  Delegate for requesting text render components from owner
 DECLARE_DELEGATE_RetVal_FourParams(UTextRenderComponent*, FOnCreateTextComponent, FVector /*WorldPosition*/, FString /*Text*/, FColor /*Color*/, float /*Scale*/);
 
+// ✅ NEW:  Delegate for destroying text render components
+DECLARE_DELEGATE_OneParam(FOnDestroyTextComponent, UTextRenderComponent*);
+
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class CLAUDEDUNGAI_API UDebugHelpers : public UActorComponent
 {
@@ -223,6 +226,9 @@ public:
 #pragma region Delegate
 	// Delegate for requesting text component creation from owner
 	FOnCreateTextComponent OnCreateTextComponent;
+
+	// ✅ NEW: Delegate for requesting text component destruction from owner
+	FOnDestroyTextComponent OnDestroyTextComponent;
 #pragma endregion
 	
 private:
