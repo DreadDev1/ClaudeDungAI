@@ -288,7 +288,7 @@ int32 URoomGenerator::ExecuteForcedPlacements()
 	}
 
 	int32 SuccessfulPlacements = 0;
-	const TMap<FIntPoint, FMeshPlacementInfo>& ForcedPlacements = RoomData->ForcedInteriorPlacements;
+	const TMap<FIntPoint, FMeshPlacementInfo>& ForcedPlacements = RoomData->ForcedFloorPlacements;
 
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedPlacements - Processing %d forced placements"), ForcedPlacements. Num());
 
@@ -594,6 +594,13 @@ bool URoomGenerator::GenerateWalls()
 
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateWalls - Starting wall generation"));
 
+	// PASS 0: FORCED WALL PLACEMENTS
+	int32 ForcedCount = ExecuteForcedWallPlacements();
+	if (ForcedCount > 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("  Phase 0: Placed %d forced walls"), ForcedCount);
+	}
+	
 	// PASS 1: Generate base walls for each edge
 	FillWallEdge(EWallEdge::North);
 	FillWallEdge(EWallEdge::South);
@@ -613,6 +620,137 @@ bool URoomGenerator::GenerateWalls()
 		PlacedWalls.Num());
 
 	return true;
+}
+
+int32 URoomGenerator::ExecuteForcedWallPlacements()
+{
+	if (!bIsInitialized || !RoomData)
+	{
+		UE_LOG(LogTemp, Error, TEXT("URoomGenerator:: ExecuteForcedWallPlacements - Not initialized! "));
+		return 0;
+	}
+
+	// Check if there are any forced placements
+	if (RoomData->ForcedWallPlacements.Num() == 0)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("URoomGenerator:: ExecuteForcedWallPlacements - No forced walls to place"));
+		return 0;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedWallPlacements - Processing %d forced walls"), 
+		RoomData->ForcedWallPlacements. Num());
+
+	int32 SuccessfulPlacements = 0;
+	int32 FailedPlacements = 0;
+
+	for (int32 i = 0; i < RoomData->ForcedWallPlacements.Num(); ++i)
+	{
+		const FForcedWallPlacement& ForcedWall = RoomData->ForcedWallPlacements[i];
+		const FWallModule& Module = ForcedWall.WallModule;
+
+		UE_LOG(LogTemp, Verbose, TEXT("  Forced Wall [%d]: Edge=%s, StartCell=%d, Footprint=%d"),
+			i, 
+			*UEnum::GetValueAsString(ForcedWall.Edge),
+			ForcedWall. StartCell, 
+			Module.Y_AxisFootprint);
+
+		// ========================================================================
+		// VALIDATION: Load Base Mesh
+		// ========================================================================
+		UStaticMesh* BaseMesh = Module.BaseMesh.LoadSynchronous();
+		if (!BaseMesh)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("    SKIPPED: BaseMesh failed to load"));
+			FailedPlacements++;
+			continue;
+		}
+
+		// ========================================================================
+		// VALIDATION: Check Edge Cells
+		// ========================================================================
+		TArray<int32> EdgeCells = GetEdgeCells(ForcedWall.Edge);
+		if (EdgeCells.Num() == 0)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("    SKIPPED: No cells on edge %s"), 
+				*UEnum::GetValueAsString(ForcedWall.Edge));
+			FailedPlacements++;
+			continue;
+		}
+
+		// ========================================================================
+		// VALIDATION: Check Bounds
+		// ========================================================================
+		int32 Footprint = Module.Y_AxisFootprint;
+		if (ForcedWall.StartCell < 0 || ForcedWall.StartCell + Footprint > EdgeCells.Num())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("    SKIPPED: Out of bounds (StartCell=%d, Footprint=%d, EdgeLength=%d)"),
+				ForcedWall.StartCell, Footprint, EdgeCells. Num());
+			FailedPlacements++;
+			continue;
+		}
+
+		// NOTE: Overlap checking with other forced walls would happen here
+		// For now, we assume designers don't create overlapping forced placements
+
+		// ========================================================================
+		// PLACEMENT: Calculate Position
+		// ========================================================================
+		FVector WallPosition = CalculateWallPosition(ForcedWall.Edge, ForcedWall.StartCell, Footprint);
+		FRotator WallRotation = GetWallRotation(ForcedWall.Edge);
+
+		// ========================================================================
+		// PLACEMENT: Create Base Wall Transform
+		// ========================================================================
+		FTransform BaseTransform(WallRotation, WallPosition, FVector:: OneVector);
+
+		// ========================================================================
+		// TRACKING: Store Segment for Middle/Top Spawning
+		// ========================================================================
+		FGeneratorWallSegment Segment;
+		Segment.Edge = ForcedWall.Edge;
+		Segment.StartCell = ForcedWall.StartCell;
+		Segment. SegmentLength = Footprint;
+		Segment.BaseTransform = BaseTransform;
+		Segment.BaseMesh = BaseMesh;
+		Segment.WallModule = &Module;  // Store pointer to module data
+
+		PlacedBaseWallSegments.Add(Segment);
+
+		UE_LOG(LogTemp, Verbose, TEXT("    ✓ Forced wall tracked: Edge=%s, StartCell=%d, Footprint=%d"),
+			*UEnum::GetValueAsString(ForcedWall.Edge),
+			ForcedWall.StartCell,
+			Footprint);
+
+		SuccessfulPlacements++;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedWallPlacements - Placed %d/%d forced walls (%d failed)"),
+		SuccessfulPlacements, 
+		RoomData->ForcedWallPlacements. Num(),
+		FailedPlacements);
+
+	return SuccessfulPlacements;
+}
+
+bool URoomGenerator::IsCellRangeOccupied(EWallEdge Edge, int32 StartCell, int32 Length) const
+{
+	// Check if any forced wall overlaps with this range
+	for (const FGeneratorWallSegment& Segment : PlacedBaseWallSegments)
+	{
+		if (Segment.Edge != Edge)
+			continue;
+
+		// Check for overlap:  [Start1, End1) overlaps [Start2, End2) if Start1 < End2 AND Start2 < End1
+		int32 SegmentEnd = Segment.StartCell + Segment.SegmentLength;
+		int32 RangeEnd = StartCell + Length;
+
+		if (StartCell < SegmentEnd && Segment.StartCell < RangeEnd)
+		{
+			return true;  // Overlap detected
+		}
+	}
+
+	return false;
 }
 
 void URoomGenerator::ClearPlacedWalls()
@@ -1193,20 +1331,30 @@ void URoomGenerator::FillWallEdge(EWallEdge Edge)
 
 	FRotator WallRotation = GetWallRotation(Edge);
 
-	UE_LOG(LogTemp, Verbose, TEXT("  Filling edge %d with %d cells"), (int32)Edge, EdgeCells.Num());
+	UE_LOG(LogTemp, Verbose, TEXT("  Filling edge %d with %d cells"),
+		(int32)Edge, EdgeCells.Num());
 
 	// Greedy bin packing:  Fill with largest modules first (BASE LAYER ONLY)
 	int32 CurrentCell = 0;
 
 	while (CurrentCell < EdgeCells. Num())
 	{
+		// ✅ NEW: Skip cells occupied by forced walls
+		if (IsCellRangeOccupied(Edge, CurrentCell, 1))
+		{
+			UE_LOG(LogTemp, VeryVerbose, TEXT("    Skipping cell %d (occupied by forced wall)"), CurrentCell);
+			CurrentCell++;
+			continue;
+		}
+		
 		// Find largest module that fits remaining space
 		const FWallModule* BestModule = nullptr;
 		int32 SpaceLeft = EdgeCells. Num() - CurrentCell;
 
 		for (const FWallModule& Module : WallData->AvailableWallModules)
 		{
-			if (Module.Y_AxisFootprint <= SpaceLeft)
+			if (Module.Y_AxisFootprint <= SpaceLeft && 
+				! IsCellRangeOccupied(Edge, CurrentCell, Module.Y_AxisFootprint))
 			{
 				if (! BestModule || Module.Y_AxisFootprint > BestModule->Y_AxisFootprint)
 				{
@@ -1217,8 +1365,10 @@ void URoomGenerator::FillWallEdge(EWallEdge Edge)
 
 		if (! BestModule)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("    No wall module fits remaining %d cells on edge %d"), SpaceLeft, (int32)Edge);
-			break;
+			UE_LOG(LogTemp, Warning, TEXT("    No wall module fits remaining %d cells on edge %d"), 
+				SpaceLeft, (int32)Edge);
+			CurrentCell++;  // ✅ Skip this cell and try next
+			continue;
 		}
 
 		// Load base mesh

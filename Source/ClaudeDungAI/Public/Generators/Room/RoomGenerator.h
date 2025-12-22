@@ -142,19 +142,17 @@ public:
 	/* Get list of placed walls */
 	const TArray<FPlacedWallInfo>& GetPlacedWalls() const { return PlacedWalls; }
 
+	int32 ExecuteForcedWallPlacements();
+
+	bool IsCellRangeOccupied(EWallEdge Edge, int32 StartCell, int32 Length) const;
+	
 	/* Clear all placed walls */
 	void ClearPlacedWalls();
 
-	/**
-	* Spawn middle wall layers (Middle1, Middle2) using socket-based stacking
-	* Called after base walls are placed
-	*/
+	/* Called after base walls are placed */
 	void SpawnMiddleWallLayers();
 
-	/**
-	 * Spawn top wall layer using socket-based stacking
-	 * Called after middle walls are placed
-	 */
+	/* Called after middle walls are placed */
 	void SpawnTopWallLayer();
 
 	bool GetSocketTransform(UStaticMesh* Mesh, FName SocketName, FVector& OutLocation, FRotator& OutRotation) const;

@@ -65,5 +65,8 @@ public:
 	// Map of specific meshes to force-place at coordinates (Highest Priority)
 	// Key = Grid coordinate (top-left cell), Value = Mesh to place
 	UPROPERTY(EditAnywhere, Category = "Designer Overrides|Floor")
-	TMap<FIntPoint, FMeshPlacementInfo> ForcedInteriorPlacements;
+	TMap<FIntPoint, FMeshPlacementInfo> ForcedFloorPlacements;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Walls")
+	TArray<FForcedWallPlacement> ForcedWallPlacements;
 };
