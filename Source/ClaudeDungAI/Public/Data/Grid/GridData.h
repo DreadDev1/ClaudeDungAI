@@ -97,12 +97,12 @@ struct FWallModule
 
 	// Middle layer 1 (first middle layer, 100cm or 200cm tall)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Wall Meshes")
-	TSoftObjectPtr<UStaticMesh> Middle1Mesh;
+	TSoftObjectPtr<UStaticMesh> MiddleMesh1;
 
 	// Middle layer 2 (optional second middle layer, typically 100cm tall)
 	// Only used if Middle1Mesh is also assigned
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Wall Meshes")
-	TSoftObjectPtr<UStaticMesh> Middle2Mesh;
+	TSoftObjectPtr<UStaticMesh> MiddleMesh2;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Wall Meshes")
 	TSoftObjectPtr<UStaticMesh> TopMesh;
