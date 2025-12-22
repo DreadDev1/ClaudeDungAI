@@ -3,10 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UObject/NoExportTypes.h"
 #include "Data/Grid/GridData.h"
 #include "Data/Room/RoomData.h"
-#include "Data/Room/FloorData.h"
 #include "RoomGenerator.generated.h"
 
 /* Struct to track placed mesh information */
@@ -35,11 +33,7 @@ struct FPlacedMeshInfo
 	UPROPERTY()
 	FTransform WorldTransform;
 
-	FPlacedMeshInfo()
-		: GridPosition(FIntPoint:: ZeroValue)
-		, Size(FIntPoint::ZeroValue)
-		, Rotation(0)
-	{}
+	FPlacedMeshInfo() : GridPosition(FIntPoint:: ZeroValue), Size(FIntPoint::ZeroValue), Rotation(0) {}
 };
 
 // Wall segment tracking structure (matches MasterRoom's FWallSegmentInfo)
@@ -55,19 +49,10 @@ struct FGeneratorWallSegment
 	UStaticMesh* BaseMesh;
 	const FWallModule* WallModule;  // Reference to module for Middle/Top
 
-	FGeneratorWallSegment()
-		: Edge(EWallEdge::North)
-		, StartCell(0)
-		, SegmentLength(0)
-		, BaseMesh(nullptr)
-		, WallModule(nullptr)
-	{}
+	FGeneratorWallSegment() : Edge(EWallEdge::North), StartCell(0), SegmentLength(0), BaseMesh(nullptr), WallModule(nullptr) {}
 };
-/**
- * RoomGenerator - Pure logic class for room generation
- * Handles grid creation, mesh placement algorithms, and room data processing
- * Does NOT spawn actors or interact with the world
- */
+
+/* RoomGenerator - Pure logic class for room generation Handles grid creation, mesh placement algorithms, and room data processing */
 UCLASS()
 class CLAUDEDUNGAI_API URoomGenerator : public UObject
 {
@@ -155,7 +140,6 @@ public:
 	/* Called after middle walls are placed */
 	void SpawnTopWallLayer();
 
-	bool GetSocketTransform(UStaticMesh* Mesh, FName SocketName, FVector& OutLocation, FRotator& OutRotation) const;
 #pragma endregion
 	
 #pragma region Coordinate Conversion
@@ -264,16 +248,6 @@ private:
 
 	/* Convert 1D array index to 2D grid coordinate */
 	FIntPoint IndexToGridCoord(int32 Index) const;
-
-	/* Get edge cells for a specific wall edge
-	 * Returns array of cell indices along that edge */
-	TArray<int32> GetEdgeCells(EWallEdge Edge) const;
-
-	/* Get rotation for walls on a specific edge (all face inward) */
-	FRotator GetWallRotation(EWallEdge Edge) const;
-
-	/* Calculate world position for a wall segment for specific edge*/
-	FVector CalculateWallPosition(EWallEdge Edge, int32 StartCell, int32 SpanLength) const;
 
 	/* Fill one edge with wall modules using greedy bin packing */
 	void FillWallEdge(EWallEdge Edge);
