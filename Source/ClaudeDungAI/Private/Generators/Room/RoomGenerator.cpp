@@ -571,42 +571,46 @@ bool URoomGenerator::GenerateWalls()
 {
 	if (!bIsInitialized)
 	{
-		UE_LOG(LogTemp, Error, TEXT("URoomGenerator:: GenerateWalls - Generator not initialized! "));
+		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - Generator not initialized! "));
 		return false;
 	}
 
-	if (! RoomData || RoomData->WallStyleData.IsNull())
+	if (!RoomData || RoomData->WallStyleData.IsNull())
 	{
 		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - WallStyleData not assigned!"));
 		return false;
 	}
 
-	// Load WallData
 	UWallData* WallData = RoomData->WallStyleData. LoadSynchronous();
-	if (!WallData)
+	if (!WallData || WallData->AvailableWallModules.Num() == 0)
 	{
-		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - Failed to load WallStyleData!"));
+		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - No wall modules defined!"));
 		return false;
 	}
 
-	if (WallData->AvailableWallModules.Num() == 0)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("URoomGenerator::GenerateWalls - No wall modules defined!"));
-		return false;
-	}
-
-	// Clear previous wall data
+	// Clear previous data
 	ClearPlacedWalls();
+	PlacedBaseWallSegments.Empty();  // ✅ Clear tracking array
 
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateWalls - Starting wall generation"));
 
-	// Generate walls for each edge
+	// PASS 1: Generate base walls for each edge
 	FillWallEdge(EWallEdge::North);
 	FillWallEdge(EWallEdge::South);
 	FillWallEdge(EWallEdge::East);
 	FillWallEdge(EWallEdge::West);
 
-	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateWalls - Placed %d wall segments"), PlacedWalls.Num());
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateWalls - Base walls tracked:  %d segments"), 
+		PlacedBaseWallSegments.Num());
+
+	// PASS 2: Spawn middle layers using socket-based stacking
+	SpawnMiddleWallLayers();
+
+	// PASS 3: Spawn top layer using socket-based stacking
+	SpawnTopWallLayer();
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateWalls - Complete.  Total wall records: %d"), 
+		PlacedWalls.Num());
 
 	return true;
 }
@@ -616,32 +620,190 @@ void URoomGenerator::ClearPlacedWalls()
 	PlacedWalls.Empty();
 }
 
-bool URoomGenerator::GetMeshSocketTransform(const TSoftObjectPtr<UStaticMesh>& MeshAsset, FName SocketName, FTransform& OutSocketTransform) const
+void URoomGenerator::SpawnMiddleWallLayers()
 {
-	if (MeshAsset.IsNull())
+	if (!RoomData || RoomData->WallStyleData.IsNull())
+		return;
+
+	int32 Middle1Spawned = 0;
+	int32 Middle2Spawned = 0;
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::SpawnMiddleWallLayers - Processing %d base segments"), 
+		PlacedBaseWallSegments.Num());
+
+	for (const FGeneratorWallSegment& Segment : PlacedBaseWallSegments)
 	{
-		return false;
+		if (! Segment.WallModule)
+			continue;
+
+		// --- MIDDLE 1 LAYER ---
+		UStaticMesh* Middle1Mesh = Segment.WallModule->MiddleMesh1.LoadSynchronous();
+
+		if (Middle1Mesh)
+		{
+			// Get socket from Base mesh
+			FVector SocketLocation;
+			FRotator SocketRotation;
+			bool bHasSocket = GetSocketTransform(Segment.BaseMesh, FName("TopBackCenter"), 
+				SocketLocation, SocketRotation);
+
+			if (!bHasSocket)
+			{
+				// Fallback:  Use WallHeight
+				if (RoomData && RoomData->WallStyleData.IsValid())
+				{
+					UWallData* WallData = RoomData->WallStyleData. LoadSynchronous();
+					if (WallData)
+					{
+						SocketLocation = FVector(0, 0, WallData->WallHeight);
+						SocketRotation = FRotator:: ZeroRotator;
+					}
+				}
+			}
+
+			// Calculate Middle1 world transform
+			FTransform SocketTransform(SocketRotation, SocketLocation);
+			FTransform Middle1WorldTransform = SocketTransform * Segment.BaseTransform;
+
+			// Store for later use (Middle2/Top stacking)
+			FPlacedWallInfo PlacedWall;
+			PlacedWall.Edge = Segment.Edge;
+			PlacedWall.StartCell = Segment.StartCell;
+			PlacedWall.SpanLength = Segment.SegmentLength;
+			PlacedWall.WallModule = *Segment.WallModule;
+			PlacedWall. BottomTransform = Segment.BaseTransform;
+			PlacedWall.Middle1Transform = Middle1WorldTransform;
+
+			PlacedWalls.Add(PlacedWall);
+			Middle1Spawned++;
+
+			// --- MIDDLE 2 LAYER (only if Middle1 exists) ---
+			UStaticMesh* Middle2Mesh = Segment.WallModule->MiddleMesh2.LoadSynchronous();
+
+			if (Middle2Mesh)
+			{
+				// Get socket from Middle1 mesh
+				FVector Middle2SocketLocation;
+				FRotator Middle2SocketRotation;
+				bool bHasMiddle1Socket = GetSocketTransform(Middle1Mesh, FName("TopBackCenter"), 
+					Middle2SocketLocation, Middle2SocketRotation);
+
+				if (!bHasMiddle1Socket)
+				{
+					// Fallback: Use mesh bounds
+					FBoxSphereBounds Bounds = Middle1Mesh->GetBounds();
+					Middle2SocketLocation = FVector(0, 0, Bounds.BoxExtent.Z * 2.0f);
+					Middle2SocketRotation = FRotator::ZeroRotator;
+				}
+
+				// Chain transforms: Base → Middle1 → Middle2
+				FTransform Middle1SocketTransform(Middle2SocketRotation, Middle2SocketLocation);
+				FTransform Middle2WorldTransform = Middle1SocketTransform * Middle1WorldTransform;
+
+				// Update stored wall info
+				PlacedWalls.Last().Middle2Transform = Middle2WorldTransform;
+				Middle2Spawned++;
+			}
+		}
 	}
 
-	// Load the mesh
-	UStaticMesh* Mesh = MeshAsset.LoadSynchronous();
-	if (!Mesh)
-	{
-		return false;
-	}
-
-	// Find the socket
-	UStaticMeshSocket* Socket = Mesh->FindSocket(SocketName);
-	if (!Socket)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Socket '%s' not found on mesh '%s'"), *SocketName.ToString(), *MeshAsset. GetAssetName());
-		return false;
-	}
-
-	// Get socket's relative transform
-	OutSocketTransform = FTransform(Socket->RelativeRotation, Socket->RelativeLocation, Socket->RelativeScale);
-	return true;
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator:: SpawnMiddleWallLayers - Middle1: %d, Middle2: %d"), 
+		Middle1Spawned, Middle2Spawned);
 }
+
+void URoomGenerator::SpawnTopWallLayer()
+{
+	if (!RoomData || RoomData->WallStyleData.IsNull())
+		return;
+
+	int32 TopSpawned = 0;
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator:: SpawnTopWallLayer - Processing %d wall segments"), 
+		PlacedWalls.Num());
+
+	for (FPlacedWallInfo& Wall : PlacedWalls)
+	{
+		UStaticMesh* TopMesh = Wall.WallModule. TopMesh.LoadSynchronous();
+		if (! TopMesh)
+			continue;
+
+		// Determine which layer Top should stack on (priority: Middle2 > Middle1 > Base)
+		FTransform StackBaseTransform;
+		UStaticMesh* SnapToMesh = nullptr;
+
+		// Load middle meshes to determine stack point
+		UStaticMesh* Middle2Mesh = Wall.WallModule.MiddleMesh2.LoadSynchronous();
+		UStaticMesh* Middle1Mesh = Wall.WallModule. MiddleMesh1.LoadSynchronous();
+
+		if (Middle2Mesh)
+		{
+			// Stack on Middle2
+			StackBaseTransform = Wall.Middle2Transform;
+			SnapToMesh = Middle2Mesh;
+		}
+		else if (Middle1Mesh)
+		{
+			// Stack on Middle1
+			StackBaseTransform = Wall.Middle1Transform;
+			SnapToMesh = Middle1Mesh;
+		}
+		else
+		{
+			// Stack directly on Base
+			StackBaseTransform = Wall. BottomTransform;
+			SnapToMesh = Wall.WallModule.BaseMesh. LoadSynchronous();
+		}
+
+		// Get socket from snap-to mesh
+		FVector SocketLocation;
+		FRotator SocketRotation;
+		bool bHasSocket = GetSocketTransform(SnapToMesh, FName("TopBackCenter"), 
+			SocketLocation, SocketRotation);
+
+		if (!bHasSocket)
+		{
+			// Fallback: Use WallHeight
+			if (RoomData && RoomData->WallStyleData.IsValid())
+			{
+				UWallData* WallData = RoomData->WallStyleData.LoadSynchronous();
+				if (WallData)
+				{
+					SocketLocation = FVector(0, 0, WallData->WallHeight);
+					SocketRotation = FRotator::ZeroRotator;
+				}
+			}
+		}
+
+		// Calculate Top world transform
+		FTransform SocketTransform(SocketRotation, SocketLocation);
+		FTransform TopWorldTransform = SocketTransform * StackBaseTransform;
+
+		// Store transform
+		Wall.TopTransform = TopWorldTransform;
+		TopSpawned++;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::SpawnTopWallLayer - Top meshes: %d"), TopSpawned);
+}
+
+bool URoomGenerator::GetSocketTransform(UStaticMesh* Mesh, FName SocketName, FVector& OutLocation, FRotator& OutRotation) const
+{
+	if (!Mesh)
+		return false;
+
+	// Find socket in mesh
+	UStaticMeshSocket* Socket = Mesh->FindSocket(SocketName);
+	if (Socket)
+	{
+		OutLocation = Socket->RelativeLocation;
+		OutRotation = Socket->RelativeRotation;
+		return true;
+	}
+
+	return false;
+}
+
+
 #pragma endregion
 
 #pragma region Internal Floor Generation
@@ -831,7 +993,6 @@ FIntPoint URoomGenerator::CalculateFootprint(const FMeshPlacementInfo& MeshInfo)
 
 #pragma region Coordinate Conversion
 
-
 FVector URoomGenerator::GridToLocalPosition(FIntPoint GridCoord) const
 {
 	// Calculate center of cell
@@ -1019,7 +1180,7 @@ FVector URoomGenerator::CalculateWallPosition(EWallEdge Edge, int32 StartCell, i
 
 void URoomGenerator::FillWallEdge(EWallEdge Edge)
 {
-	if (! RoomData || RoomData->WallStyleData.IsNull())
+	if (!RoomData || RoomData->WallStyleData. IsNull())
 		return;
 
 	UWallData* WallData = RoomData->WallStyleData.LoadSynchronous();
@@ -1034,7 +1195,7 @@ void URoomGenerator::FillWallEdge(EWallEdge Edge)
 
 	UE_LOG(LogTemp, Verbose, TEXT("  Filling edge %d with %d cells"), (int32)Edge, EdgeCells.Num());
 
-	// Greedy bin packing:  Fill with largest modules first
+	// Greedy bin packing:  Fill with largest modules first (BASE LAYER ONLY)
 	int32 CurrentCell = 0;
 
 	while (CurrentCell < EdgeCells. Num())
@@ -1060,7 +1221,7 @@ void URoomGenerator::FillWallEdge(EWallEdge Edge)
 			break;
 		}
 
-		// Load base mesh to verify it exists
+		// Load base mesh
 		UStaticMesh* BaseMesh = BestModule->BaseMesh.LoadSynchronous();
 		if (!BaseMesh)
 		{
@@ -1071,124 +1232,22 @@ void URoomGenerator::FillWallEdge(EWallEdge Edge)
 		// Calculate position for this wall segment
 		FVector BasePosition = CalculateWallPosition(Edge, CurrentCell, BestModule->Y_AxisFootprint);
 
-		// Create placed wall info
-		FPlacedWallInfo PlacedWall;
-		PlacedWall.Edge = Edge;
-		PlacedWall.StartCell = CurrentCell;
-		PlacedWall.SpanLength = BestModule->Y_AxisFootprint;
-		PlacedWall.WallModule = *BestModule;
+		// Create base wall transform
+		FTransform BaseTransform(WallRotation, BasePosition, FVector:: OneVector);
 
-		// ========================================================================
-		// BASE MESH (Bottom Layer)
-		// ========================================================================
-		PlacedWall. BottomTransform = FTransform(WallRotation, BasePosition, FVector:: OneVector);
+		// Store segment info for Middle/Top spawning (CRITICAL - matches MasterRoom)
+		FGeneratorWallSegment Segment;
+		Segment.Edge = Edge;
+		Segment. StartCell = CurrentCell;
+		Segment.SegmentLength = BestModule->Y_AxisFootprint;
+		Segment. BaseTransform = BaseTransform;
+		Segment.BaseMesh = BaseMesh;
+		Segment.WallModule = BestModule;  // Store pointer to module data
 
-		// Track cumulative transform for stacking (starts with base transform)
-		FTransform CumulativeTransform = PlacedWall.BottomTransform;
+		PlacedBaseWallSegments.Add(Segment);
 
-		// ========================================================================
-		// MIDDLE1 MESH (Snap to BaseMesh TopBackCenter socket)
-		// ========================================================================
-		if (! BestModule->MiddleMesh1.IsNull())
-		{
-			FTransform SocketTransform;
-			if (GetMeshSocketTransform(BestModule->BaseMesh, FName("TopBackCenter"), SocketTransform))
-			{
-				// Apply socket transform to cumulative position
-				FTransform Middle1LocalTransform = SocketTransform * CumulativeTransform;
-				PlacedWall.Middle1Transform = Middle1LocalTransform;
-
-				// Update cumulative for next layer
-				CumulativeTransform = Middle1LocalTransform;
-
-				UE_LOG(LogTemp, VeryVerbose, TEXT("    Middle1 snapped to BaseMesh socket at Z offset %.2f"), 
-					SocketTransform.GetLocation().Z);
-			}
-			else
-			{
-				// Fallback:  Use WallHeight if socket not found
-				FVector Middle1Pos = BasePosition + FVector(0.0f, 0.0f, WallData->WallHeight);
-				PlacedWall.Middle1Transform = FTransform(WallRotation, Middle1Pos, FVector::OneVector);
-				CumulativeTransform = PlacedWall.Middle1Transform;
-
-				UE_LOG(LogTemp, Warning, TEXT("    TopBackCenter socket not found on BaseMesh, using WallHeight fallback"));
-			}
-		}
-
-		// ========================================================================
-		// MIDDLE2 MESH (Snap to MiddleMesh1 TopBackCenter socket)
-		// ========================================================================
-		if (!BestModule->MiddleMesh2.IsNull())
-		{
-			FTransform SocketTransform;
-			if (GetMeshSocketTransform(BestModule->MiddleMesh1, FName("TopBackCenter"), SocketTransform))
-			{
-				// Apply socket transform to cumulative position
-				FTransform Middle2LocalTransform = SocketTransform * CumulativeTransform;
-				PlacedWall.Middle2Transform = Middle2LocalTransform;
-
-				// Update cumulative for next layer
-				CumulativeTransform = Middle2LocalTransform;
-
-				UE_LOG(LogTemp, VeryVerbose, TEXT("    Middle2 snapped to Middle1 socket"));
-			}
-			else
-			{
-				// Fallback:  Stack at 2x WallHeight
-				float TotalZOffset = WallData->WallHeight * 2.0f;
-				FVector Middle2Pos = BasePosition + FVector(0.0f, 0.0f, TotalZOffset);
-				PlacedWall.Middle2Transform = FTransform(WallRotation, Middle2Pos, FVector::OneVector);
-				CumulativeTransform = PlacedWall.Middle2Transform;
-
-				UE_LOG(LogTemp, Warning, TEXT("    TopBackCenter socket not found on MiddleMesh1, using WallHeight fallback"));
-			}
-		}
-
-		// ========================================================================
-		// TOP MESH (Snap to highest available layer's TopBackCenter socket)
-		// ========================================================================
-		if (!BestModule->TopMesh.IsNull())
-		{
-			// Determine which mesh to snap to (Middle2 > Middle1 > Base)
-			TSoftObjectPtr<UStaticMesh> SnapToMesh;
-			
-			if (! BestModule->MiddleMesh2.IsNull())
-			{
-				SnapToMesh = BestModule->MiddleMesh2;
-			}
-			else if (!BestModule->MiddleMesh1.IsNull())
-			{
-				SnapToMesh = BestModule->MiddleMesh1;
-			}
-			else
-			{
-				SnapToMesh = BestModule->BaseMesh;
-			}
-
-			FTransform SocketTransform;
-			if (GetMeshSocketTransform(SnapToMesh, FName("TopBackCenter"), SocketTransform))
-			{
-				// Apply socket transform to cumulative position
-				FTransform TopLocalTransform = SocketTransform * CumulativeTransform;
-				PlacedWall.TopTransform = TopLocalTransform;
-
-				UE_LOG(LogTemp, VeryVerbose, TEXT("    TopMesh snapped to socket"));
-			}
-			else
-			{
-				// Fallback:  Stack at 3x WallHeight
-				float TotalZOffset = WallData->WallHeight * 3.0f;
-				FVector TopPos = BasePosition + FVector(0.0f, 0.0f, TotalZOffset);
-				PlacedWall.TopTransform = FTransform(WallRotation, TopPos, FVector::OneVector);
-
-				UE_LOG(LogTemp, Warning, TEXT("    TopBackCenter socket not found, using WallHeight fallback"));
-			}
-		}
-
-		// Store placed wall
-		PlacedWalls.Add(PlacedWall);
-
-		UE_LOG(LogTemp, VeryVerbose, TEXT("    Placed %d-cell wall module at cell %d"), BestModule->Y_AxisFootprint, CurrentCell);
+		UE_LOG(LogTemp, VeryVerbose, TEXT("    Tracked %d-cell base wall at cell %d"), 
+			BestModule->Y_AxisFootprint, CurrentCell);
 
 		// Advance to next segment
 		CurrentCell += BestModule->Y_AxisFootprint;

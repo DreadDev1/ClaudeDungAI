@@ -245,25 +245,25 @@ void ARoomSpawner::GenerateWallMeshes()
 	// Validate RoomData
 	if (!RoomData)
 	{
-		DebugHelpers->LogCritical(TEXT("RoomData is not assigned!  Cannot generate wall meshes."));
+		DebugHelpers->LogCritical(TEXT("RoomData is not assigned!  Cannot generate wall meshes. "));
 		DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
 		return;
 	}
 
 	if (!RoomData->WallStyleData.IsValid())
 	{
-		DebugHelpers->LogCritical(TEXT("WallStyleData is not assigned in RoomData! "));
+		DebugHelpers->LogCritical(TEXT("WallStyleData is not assigned in RoomData!  "));
 		DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
 		return;
 	}
 
 	// Auto-generate grid if needed
-	if (! RoomGenerator || !bIsGenerated)
+	if (!  RoomGenerator || ! bIsGenerated)
 	{
-		DebugHelpers->LogImportant(TEXT("Grid not found.  Auto-generating grid..."));
+		DebugHelpers->LogImportant(TEXT("Grid not found.   Auto-generating grid..."));
 		GenerateRoomGrid();
 
-		if (!RoomGenerator || ! bIsGenerated)
+		if (!RoomGenerator || !  bIsGenerated)
 		{
 			DebugHelpers->LogCritical(TEXT("Auto-generation of grid failed!"));
 			DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
@@ -285,10 +285,12 @@ void ARoomSpawner::GenerateWallMeshes()
 
 	// Get placed walls from generator
 	const TArray<FPlacedWallInfo>& PlacedWalls = RoomGenerator->GetPlacedWalls();
-	DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d wall segments... "), PlacedWalls.Num()));
+	DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d wall segments...  "), PlacedWalls.Num()));
+
+	// ✅ ADD THIS LINE - Get room origin for world space conversion
+	FVector RoomOrigin = GetActorLocation();
 
 	// Spawn walls in world
-	FVector RoomOrigin = GetActorLocation();
 	for (const FPlacedWallInfo& PlacedWall : PlacedWalls)
 	{
 		SpawnWallSegment(PlacedWall, RoomOrigin);

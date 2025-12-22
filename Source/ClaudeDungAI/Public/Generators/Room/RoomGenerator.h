@@ -42,6 +42,27 @@ struct FPlacedMeshInfo
 	{}
 };
 
+// Wall segment tracking structure (matches MasterRoom's FWallSegmentInfo)
+USTRUCT()
+struct FGeneratorWallSegment
+{
+	GENERATED_BODY()
+
+	EWallEdge Edge;
+	int32 StartCell;
+	int32 SegmentLength;
+	FTransform BaseTransform;
+	UStaticMesh* BaseMesh;
+	const FWallModule* WallModule;  // Reference to module for Middle/Top
+
+	FGeneratorWallSegment()
+		: Edge(EWallEdge::North)
+		, StartCell(0)
+		, SegmentLength(0)
+		, BaseMesh(nullptr)
+		, WallModule(nullptr)
+	{}
+};
 /**
  * RoomGenerator - Pure logic class for room generation
  * Handles grid creation, mesh placement algorithms, and room data processing
@@ -124,7 +145,19 @@ public:
 	/* Clear all placed walls */
 	void ClearPlacedWalls();
 
-	bool GetMeshSocketTransform(const TSoftObjectPtr<UStaticMesh>& MeshAsset, FName SocketName, FTransform& OutSocketTransform) const;
+	/**
+	* Spawn middle wall layers (Middle1, Middle2) using socket-based stacking
+	* Called after base walls are placed
+	*/
+	void SpawnMiddleWallLayers();
+
+	/**
+	 * Spawn top wall layer using socket-based stacking
+	 * Called after middle walls are placed
+	 */
+	void SpawnTopWallLayer();
+
+	bool GetSocketTransform(UStaticMesh* Mesh, FName SocketName, FVector& OutLocation, FRotator& OutRotation) const;
 #pragma endregion
 	
 #pragma region Coordinate Conversion
@@ -183,6 +216,11 @@ private:
 	// Placed walls
 	UPROPERTY()
 	TArray<FPlacedWallInfo> PlacedWalls;
+
+	// Tracked base wall segments for Middle/Top spawning
+	UPROPERTY()
+	TArray<FGeneratorWallSegment> PlacedBaseWallSegments;
+	
 #pragma endregion
 
 #pragma region Internal Floor Generation Functions

@@ -6,6 +6,7 @@
 #include "Engine/DataAsset.h"
 #include "WallData.generated.h"
 
+
 struct FWallModule;
 
 UCLASS()
