@@ -9,6 +9,7 @@
 #include "Data/Room/RoomData.h"
 #include "RoomSpawner.generated.h"
 
+class UWallData;
 class UTextRenderComponent;
 class UInstancedStaticMeshComponent;
 /**
@@ -109,12 +110,21 @@ public:
 	/* Check if room is generated */
 	bool IsRoomGenerated() const { return bIsGenerated; }
 
+	/** Generate wall meshes based on RoomData WallData */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void GenerateWallMeshes();
+
+	/* Clear all spawned wall meshes */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void ClearWallMeshes();
+
 private:
 
 	// Room generator instance (logic layer)
 	UPROPERTY()
 	URoomGenerator* RoomGenerator;
 
+	
 	// Flag to track if room is generated
 	bool bIsGenerated;
 
@@ -125,6 +135,11 @@ private:
 	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> FloorMeshComponents;
 	// Helper functions
 	void SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVector& RoomOrigin);
+
+	// Track spawned wall mesh instances
+	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> WallMeshComponents;
+	// Helper functions
+	void SpawnWallSegment(const FPlacedWallInfo& PlacedWall, const FVector& RoomOrigin);
 	
 #pragma region Debug Functions
 	/* Update visualization based on current grid state */

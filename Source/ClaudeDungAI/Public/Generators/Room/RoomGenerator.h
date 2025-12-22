@@ -113,6 +113,20 @@ public:
 	void MarkForcedEmptyCells(const TArray<FIntPoint>& EmptyCells);
 #pragma endregion
 
+#pragma region Wall Generation
+
+	/* Generate walls for all four edges Uses greedy bin packing (largest modules first) */
+	bool GenerateWalls();
+
+	/* Get list of placed walls */
+	const TArray<FPlacedWallInfo>& GetPlacedWalls() const { return PlacedWalls; }
+
+	/* Clear all placed walls */
+	void ClearPlacedWalls();
+
+	bool GetMeshSocketTransform(const TSoftObjectPtr<UStaticMesh>& MeshAsset, FName SocketName, FTransform& OutSocketTransform) const;
+#pragma endregion
+	
 #pragma region Coordinate Conversion
 	/* Convert grid coordinates to local position (center of cell) */
 	FVector GridToLocalPosition(FIntPoint GridCoord) const;
@@ -165,6 +179,10 @@ private:
 	int32 MediumTilesPlaced;
 	int32 SmallTilesPlaced;
 	int32 FillerTilesPlaced;
+
+	// Placed walls
+	UPROPERTY()
+	TArray<FPlacedWallInfo> PlacedWalls;
 #pragma endregion
 
 #pragma region Internal Floor Generation Functions
@@ -210,5 +228,19 @@ private:
 
 	/* Convert 1D array index to 2D grid coordinate */
 	FIntPoint IndexToGridCoord(int32 Index) const;
+
+	/* Get edge cells for a specific wall edge
+	 * Returns array of cell indices along that edge */
+	TArray<int32> GetEdgeCells(EWallEdge Edge) const;
+
+	/* Get rotation for walls on a specific edge (all face inward) */
+	FRotator GetWallRotation(EWallEdge Edge) const;
+
+	/* Calculate world position for a wall segment for specific edge*/
+	FVector CalculateWallPosition(EWallEdge Edge, int32 StartCell, int32 SpanLength) const;
+
+	/* Fill one edge with wall modules using greedy bin packing */
+	void FillWallEdge(EWallEdge Edge);
 #pragma endregion
+	
 };

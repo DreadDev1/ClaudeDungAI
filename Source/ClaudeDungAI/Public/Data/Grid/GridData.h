@@ -113,9 +113,6 @@ struct FWallModule
 };
 
 // --- Forced Wall Placement (Designer Override System) ---
-
-// Struct for placing specific wall modules at exact locations
-// Allows designers to override random wall generation with precise control
 USTRUCT(BlueprintType)
 struct FForcedWallPlacement
 {
@@ -136,10 +133,49 @@ struct FForcedWallPlacement
 	FWallModule WallModule;
 };
 
-// --- Door Position Offsets ---
+// Placed wall info (for tracking spawned walls)
+USTRUCT()
+struct FPlacedWallInfo
+{
+	GENERATED_BODY()
 
-// Struct for fine-tuning door placement positions
-// Allows designers to adjust door frame and actor positions independently per door
+	// Which edge this wall is on
+	UPROPERTY()
+	EWallEdge Edge;
+
+	// Starting cell coordinate on that edge
+	UPROPERTY()
+	int32 StartCell;
+
+	// Number of cells this wall spans
+	UPROPERTY()
+	int32 SpanLength;
+
+	// Wall module used
+	UPROPERTY()
+	FWallModule WallModule;
+
+	// World transforms for each mesh layer
+	UPROPERTY()
+	FTransform BottomTransform;
+
+	UPROPERTY()
+	FTransform Middle1Transform;
+
+	UPROPERTY()
+	FTransform Middle2Transform;
+
+	UPROPERTY()
+	FTransform TopTransform;
+
+	FPlacedWallInfo()
+		: Edge(EWallEdge::North)
+		, StartCell(0)
+		, SpanLength(0)
+	{}
+};
+
+// --- Door Position Offsets ---
 USTRUCT(BlueprintType)
 struct FDoorPositionOffsets
 {
@@ -157,9 +193,6 @@ struct FDoorPositionOffsets
 };
 
 // --- Door Placement (Designer Override System) ---
-
-// Struct for defining fixed door locations on room boundaries
-// Doors are placed first, then walls fill the gaps between doors
 USTRUCT(BlueprintType)
 struct FFixedDoorLocation
 {
