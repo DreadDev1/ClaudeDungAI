@@ -279,7 +279,7 @@ void URoomGenerator::GetFloorStatistics(int32& OutLargeTiles, int32& OutMediumTi
 
 int32 URoomGenerator::ExecuteForcedPlacements()
 {
-	if (!bIsInitialized || !RoomData)
+	if (! bIsInitialized || !RoomData)
 	{
 		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::ExecuteForcedPlacements - Not initialized! "));
 		return 0;
@@ -296,49 +296,89 @@ int32 URoomGenerator::ExecuteForcedPlacements()
 		const FMeshPlacementInfo& MeshInfo = Pair.Value;
 
 		// Validate mesh asset
-		if (MeshInfo.MeshAsset.IsNull())
+		if (MeshInfo.MeshAsset. IsNull())
 		{
 			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) has null mesh asset - skipping"), 
 				StartCoord.X, StartCoord.Y);
 			continue;
 		}
 
-		// Calculate footprint
-		FIntPoint Footprint = CalculateFootprint(MeshInfo);
+		// Calculate original footprint
+		FIntPoint OriginalFootprint = CalculateFootprint(MeshInfo);
 
-		// Select rotation (use first allowed rotation for forced placements)
-		int32 Rotation = 0;
+		UE_LOG(LogTemp, Verbose, TEXT("  Attempting forced placement at (%d,%d) with footprint %dx%d"), 
+			StartCoord.X, StartCoord.Y, OriginalFootprint.X, OriginalFootprint.Y);
+
+		// ✅ NEW: Try to find a rotation that fits the available space
+		int32 BestRotation = -1;
+		FIntPoint BestFootprint;
+
 		if (MeshInfo.AllowedRotations.Num() > 0)
 		{
-			Rotation = MeshInfo. AllowedRotations[0];
+			// Try each allowed rotation to find one that fits
+			for (int32 Rotation :  MeshInfo.AllowedRotations)
+			{
+				FIntPoint RotatedFootprint = GetRotatedFootprint(OriginalFootprint, Rotation);
+
+				// Check if this rotation fits within grid bounds
+				if (StartCoord.X + RotatedFootprint.X <= GridSize. X && 
+				    StartCoord.Y + RotatedFootprint.Y <= GridSize.Y)
+				{
+					// Check if area is available
+					if (IsAreaAvailable(StartCoord, RotatedFootprint))
+					{
+						BestRotation = Rotation;
+						BestFootprint = RotatedFootprint;
+						UE_LOG(LogTemp, Verbose, TEXT("    Found valid rotation %d° (footprint %dx%d)"), 
+							Rotation, RotatedFootprint.X, RotatedFootprint.Y);
+						break; // Use first valid rotation
+					}
+				}
+			}
+		}
+		else
+		{
+			// No allowed rotations defined, try default (0°)
+			BestRotation = 0;
+			BestFootprint = OriginalFootprint;
 		}
 
-		// Apply rotation to footprint
-		FIntPoint RotatedFootprint = GetRotatedFootprint(Footprint, Rotation);
-
-		// Validate bounds
-		if (StartCoord.X + RotatedFootprint.X > GridSize.X || 
-		    StartCoord.Y + RotatedFootprint.Y > GridSize.Y)
+		// Check if we found a valid rotation
+		if (BestRotation == -1)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) is out of bounds (size %dx%d) - skipping"), 
-				StartCoord.X, StartCoord.Y, RotatedFootprint.X, RotatedFootprint.Y);
+			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) cannot fit with any allowed rotation - skipping"), 
+				StartCoord.X, StartCoord.Y);
 			continue;
 		}
 
-		// Check if area is available
-		if (! IsAreaAvailable(StartCoord, RotatedFootprint))
+		// Validate bounds with best rotation
+		if (StartCoord.X + BestFootprint.X > GridSize.X || 
+		    StartCoord.Y + BestFootprint. Y > GridSize.Y)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) is out of bounds (size %dx%d) - skipping"), 
+				StartCoord.X, StartCoord.Y, BestFootprint. X, BestFootprint.Y);
+			continue;
+		}
+
+		// Final check if area is available
+		if (! IsAreaAvailable(StartCoord, BestFootprint))
 		{
 			UE_LOG(LogTemp, Warning, TEXT("  Forced placement at (%d,%d) overlaps existing placement - skipping"), 
 				StartCoord.X, StartCoord.Y);
 			continue;
 		}
 
-		// Place the mesh
-		if (TryPlaceMesh(StartCoord, RotatedFootprint, MeshInfo, Rotation))
+		// Place the mesh with best rotation
+		if (TryPlaceMesh(StartCoord, BestFootprint, MeshInfo, BestRotation))
 		{
 			SuccessfulPlacements++;
-			UE_LOG(LogTemp, Verbose, TEXT("  Placed forced mesh at (%d,%d) size %dx%d"), 
-				StartCoord.X, StartCoord.Y, RotatedFootprint.X, RotatedFootprint.Y);
+			UE_LOG(LogTemp, Log, TEXT("  ✓ Placed forced mesh at (%d,%d) size %dx%d rotation %d°"), 
+				StartCoord.X, StartCoord.Y, BestFootprint. X, BestFootprint.Y, BestRotation);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("  Failed to place forced mesh at (%d,%d) - TryPlaceMesh returned false"), 
+				StartCoord.X, StartCoord.Y);
 		}
 	}
 
@@ -350,7 +390,7 @@ int32 URoomGenerator::ExecuteForcedPlacements()
 
 int32 URoomGenerator::FillRemainingGaps(const TArray<FMeshPlacementInfo>& TilePool)
 {
-	if (TilePool.Num() == 0)
+if (TilePool.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("URoomGenerator:: FillRemainingGaps - No meshes in tile pool! "));
 		return 0;
