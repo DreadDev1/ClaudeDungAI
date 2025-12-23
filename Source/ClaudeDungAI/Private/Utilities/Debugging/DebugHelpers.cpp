@@ -91,7 +91,7 @@ void UDebugHelpers::DrawForcedEmptyCells(const TArray<FIntPoint>& Cells, FIntPoi
 			Center.Z += ForcedEmptyZOffset;
 
 			FVector OuterExtent(CellSize / 2.0f, CellSize / 2.0f, 27.0f);
-			DrawDebugBox(World, Center, OuterExtent, FQuat::Identity, ForcedEmptyCellBorderColor, false, GridLineLifetime, 0, 2.0f);
+			DrawDebugBox(World, Center, OuterExtent, FQuat::Identity, ForcedEmptyCellBorderColor, true, GridLineLifetime, 0, 2.0f);
 		}
 	}
 
@@ -108,7 +108,7 @@ void UDebugHelpers::DrawGridLines(FIntPoint GridSize, float CellSize, FVector Or
 	{
 		FVector Start = OriginLocation + FVector(X * CellSize, 0.0f, 0.0f);
 		FVector End = OriginLocation + FVector(X * CellSize, GridSize.Y * CellSize, 0.0f);
-		DrawDebugLine(World, Start, End, GridColor, false, GridLineLifetime, 0, GridLineThickness);
+		DrawDebugLine(World, Start, End, GridColor, true, GridLineLifetime, 0, GridLineThickness);
 	}
 
 	// Draw Y-axis lines (horizontal lines in world)
@@ -116,7 +116,7 @@ void UDebugHelpers::DrawGridLines(FIntPoint GridSize, float CellSize, FVector Or
 	{
 		FVector Start = OriginLocation + FVector(0.0f, Y * CellSize, 0.0f);
 		FVector End = OriginLocation + FVector(GridSize.X * CellSize, Y * CellSize, 0.0f);
-		DrawDebugLine(World, Start, End, GridColor, false, GridLineLifetime, 0, GridLineThickness);
+		DrawDebugLine(World, Start, End, GridColor, true, GridLineLifetime, 0, GridLineThickness);
 	}
 }
 
@@ -148,7 +148,7 @@ void UDebugHelpers::DrawCellBox(FIntPoint GridCoord, FColor Color, float CellSiz
 	// Size of the box (half extent)
 	FVector Extent(CellSize / 2.2f, CellSize / 2.2f, ZOffset * 0.8f);
 
-	DrawDebugBox(World, Center, Extent, FQuat::Identity, Color, false, GridLineLifetime, 0, CellBoxThickness);
+	DrawDebugBox(World, Center, Extent, FQuat::Identity, Color, true, GridLineLifetime, 0, CellBoxThickness);
 }
 
 void UDebugHelpers::DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, float CellSize, FVector OriginLocation)

@@ -345,8 +345,26 @@ void ARoomSpawner::ToggleCoordinates()
 	DebugHelpers->bShowCoordinates = !DebugHelpers->bShowCoordinates;
 	DebugHelpers->LogImportant(FString::Printf(TEXT("Coordinates display: %s"), 
 		DebugHelpers->bShowCoordinates ? TEXT("ON") : TEXT("OFF")));
-	
-	RefreshVisualization();
+    
+	if (!bIsGenerated || !RoomGenerator)
+	{
+		DebugHelpers->LogImportant(TEXT("No room to visualize. Generate a room first. "));
+		return;
+	}
+    
+	// ========================================================================
+	// Coordinates use UTextRenderComponent (not debug shapes)
+	// They're managed separately and don't require ClearDebugDrawings()
+	// Just call the coordinate function directly
+	// ========================================================================
+    
+	// Get grid data
+	FVector RoomOrigin = GetActorLocation();
+	FIntPoint GridSize = RoomGenerator->GetGridSize();
+	float CellSize = RoomGenerator->GetCellSize();
+    
+	// Toggle coordinates (function handles clearing internally)
+	DebugHelpers->DrawGridCoordinatesWithTextComponents(GridSize, CellSize, RoomOrigin);
 }
 
 void ARoomSpawner:: ToggleGrid()
