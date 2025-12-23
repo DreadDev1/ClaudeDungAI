@@ -114,7 +114,16 @@ void ARoomSpawner::GenerateFloorMeshes()
 	
 	// CLEANUP: Clear existing floor meshes
 	ClearFloorMeshes();
-	   
+	
+	// GENERATE FLOOR LAYOUT (This was missing!)
+	DebugHelpers->LogImportant(TEXT("Generating floor layout..."));
+	if (! RoomGenerator->GenerateFloor())
+	{
+		DebugHelpers->LogCritical(TEXT("Floor generation failed!"));
+		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
+		return;
+	}
+	
 	// SPAWNING: Get placed meshes from generator
 	const TArray<FPlacedMeshInfo>& PlacedMeshes = RoomGenerator->GetPlacedFloorMeshes();
 	DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d floor mesh instances... "), PlacedMeshes.Num()));
