@@ -58,6 +58,8 @@ void URoomGenerator:: ClearGrid()
 	MediumTilesPlaced = 0;
 	SmallTilesPlaced = 0;
 	FillerTilesPlaced = 0;
+	
+	bIsInitialized = false;
 
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ClearGrid - Grid cleared"));
 }

@@ -68,6 +68,12 @@ void ARoomSpawner::GenerateRoomGrid()
 		return;
 	}
 	
+	DebugHelpers->bShowGrid = true;
+	DebugHelpers->bShowCellStates = true;
+	DebugHelpers->bShowCoordinates = true;
+	DebugHelpers->bShowForcedEmptyRegions = true;
+	DebugHelpers->bShowForcedEmptyCells = true;
+	
 	// CREATE DEBUG VISUALIZATION (heavy, debug-only)
 	DebugHelpers->LogImportant(TEXT("Creating debug visualization... "));
 	
@@ -92,6 +98,12 @@ void ARoomSpawner::ClearRoomGrid()
 		DebugHelpers->LogSectionHeader(TEXT("CLEAR ROOM GRID"));
 		return;
 	}
+	
+	DebugHelpers->bShowGrid = false;
+	DebugHelpers->bShowCellStates = false;
+	DebugHelpers->bShowCoordinates = false;
+	DebugHelpers->bShowForcedEmptyRegions = false;
+	DebugHelpers->bShowForcedEmptyCells = false;
 	
 	// Clear floor meshes first
 	ClearFloorMeshes();

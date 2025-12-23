@@ -41,27 +41,27 @@ public:
 #pragma region Debug Settings|Visualization
 	// Show grid outline
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
-	bool bShowGrid = true;
+	bool bShowGrid = false;
 
 	// Show cell states (occupied/empty)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
-	bool bShowCellStates = true;
+	bool bShowCellStates = false;
 
 	// Show coordinate text
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
-	bool bShowCoordinates = true;
+	bool bShowCoordinates = false;
 
 	// Show forced empty regions (designer overrides)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
-	bool bShowForcedEmptyRegions = true;
+	bool bShowForcedEmptyRegions = false;
 
 	// Show forced empty individual cells
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
-	bool bShowForcedEmptyCells = true;
+	bool bShowForcedEmptyCells = false;
 	
 	// Show forced placement meshes (designer overrides)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
-	bool bShowForcedPlacements = true;
+	bool bShowForcedPlacements = false;
 #pragma endregion
 	
 #pragma region Visual Settings
