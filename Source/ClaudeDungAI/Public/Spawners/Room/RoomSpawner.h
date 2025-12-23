@@ -30,11 +30,6 @@ public:
 	// Debug visualization component
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UDebugHelpers* DebugHelpers;
-
-	// ✅ OPTIONAL: Track components for additional safety
-	UPROPERTY()
-	TArray<UTextRenderComponent*> CoordinateTextComponents;
-	
 #pragma endregion 
 
 #pragma region Room Generation Properties
@@ -68,6 +63,7 @@ public:
 	void RefreshVisualization();
 
 #pragma region Debug Functions
+#pragma region Grid Coordinate Text Rendering
 	/* Toggle coordinate display */
 	UFUNCTION(CallInEditor, Category = "Room Generation|Debug")
 	void ToggleCoordinates();
@@ -77,7 +73,7 @@ public:
 
 	/* Destroy a text render component Called by DebugHelpers via delegate */
 	void DestroyTextRenderComponent(UTextRenderComponent* TextComp);
-
+#pragma endregion
 	/* Toggle grid outline display */
 	UFUNCTION(CallInEditor, Category = "Room Generation|Debug")
 	void ToggleGrid();

@@ -360,10 +360,7 @@ UTextRenderComponent* ARoomSpawner::CreateTextRenderComponent(FVector WorldPosit
 	// Create new text render component
 	UTextRenderComponent* TextComp = NewObject<UTextRenderComponent>(this);
 	
-	if (! TextComp)
-	{
-		return nullptr;
-	}
+	if (! TextComp) return nullptr;
 
 	// Register and attach component
 	TextComp->RegisterComponent();
@@ -384,23 +381,14 @@ UTextRenderComponent* ARoomSpawner::CreateTextRenderComponent(FVector WorldPosit
 
 	// Make visible in editor
 	TextComp->SetVisibility(true);
-	TextComp->SetHiddenInGame(false); // Show in PIE too
-
-	// ✅ Track component (optional, for safety)
-	CoordinateTextComponents.Add(TextComp);
+	TextComp->SetHiddenInGame(true); // Show in PIE too
 	
 	return TextComp;
 }
 
 void ARoomSpawner::DestroyTextRenderComponent(UTextRenderComponent* TextComp)
 {
-	if (!TextComp || !TextComp->IsValidLowLevel())
-	{
-		return;
-	}
-
-	// Remove from tracking array
-	CoordinateTextComponents. Remove(TextComp);
+	if (!TextComp || !TextComp->IsValidLowLevel()) return;
 
 	// Destroy the component
 	TextComp->DestroyComponent();

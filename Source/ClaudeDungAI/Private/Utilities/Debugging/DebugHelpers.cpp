@@ -34,10 +34,7 @@ void UDebugHelpers:: DrawGrid(FIntPoint GridSize, const TArray<EGridCellType>& C
 	}
 
 	// Draw coordinates
-	if (bShowCoordinates)
-	{
-		DrawGridCoordinatesWithTextComponents(GridSize, CellSize, OriginLocation);
-	}
+	DrawGridCoordinatesWithTextComponents(GridSize, CellSize, OriginLocation);
 }
 
 void UDebugHelpers::DrawForcedEmptyRegions(const TArray<FForcedEmptyRegion>& Regions, FIntPoint GridSize, float CellSize, FVector OriginLocation)
