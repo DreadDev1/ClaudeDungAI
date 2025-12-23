@@ -46,10 +46,8 @@ public:
 
 #pragma region Editor Functions
 #if WITH_EDITOR
-	/**
-	 * Generate the room grid (visualization only at this stage)
-	 * Creates empty grid and displays it with coordinates
-	 */
+	/* Generate the room grid (visualization only at this stage)
+	 * Creates empty grid and displays it with coordinates */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void GenerateRoomGrid();
 	
@@ -127,14 +125,12 @@ private:
 	
 	// Flag to track if room is generated
 	bool bIsGenerated;
-
-	/* Initialize the room generator */
-	bool InitializeGenerator();
+	
+	// Ensure RoomGenerator is created and initialized (lightweight)
+	bool EnsureGeneratorReady();
 	
 	// Track spawned floor mesh instances
 	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> FloorMeshComponents;
-	// Helper functions
-	void SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVector& RoomOrigin);
 
 	// Track spawned wall mesh instances
 	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> WallMeshComponents;

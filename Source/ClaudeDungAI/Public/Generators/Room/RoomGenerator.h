@@ -62,13 +62,17 @@ public:
 	/* Initialize the room generator with room data */
 	bool Initialize(URoomData* InRoomData);
 
-	/* Check if generator is properly initialized */
-	bool IsInitialized() const { return bIsInitialized; }
-
 #pragma region Room Grid Management
 
+	UFUNCTION(BlueprintCallable, Category = "Room Generator")
 	void CreateGrid();
+	UFUNCTION(BlueprintCallable, Category = "Room Generator")
 	void ClearGrid();
+	UFUNCTION(BlueprintCallable, Category = "Room Generator")
+	void ResetGridCellStates();
+	UFUNCTION(BlueprintPure, Category = "Room Generator")
+	bool IsInitialized() const { return bIsInitialized; }
+	
 	const TArray<EGridCellType>& GetGridState() const { return GridState; }
 	FIntPoint GetGridSize() const { return GridSize; }
 	float GetCellSize() const { return CellSize; }
@@ -86,7 +90,7 @@ public:
 	 * @param StartCoord - Top-left corner of area @param Size - Size of area in cells (X, Y)
 	 * @return True if successful*/
 	bool ClearArea(FIntPoint StartCoord, FIntPoint Size);
-
+	
 #pragma endregion
 	
 #pragma region Floor Generation

@@ -27,37 +27,58 @@ ARoomSpawner::ARoomSpawner()
 	bIsGenerated = false;
 }
 
-
 #if WITH_EDITOR
 #pragma region In Editor Functions
+bool ARoomSpawner::EnsureGeneratorReady()
+{
+	// Validate RoomData
+	if (!RoomData) 
+	{ DebugHelpers->LogCritical(TEXT("RoomData is not assigned!")); return false;}
+
+	// Create RoomGenerator if needed
+	if (!RoomGenerator)
+	{
+		DebugHelpers->LogVerbose(TEXT("Creating RoomGenerator..."));
+		RoomGenerator = NewObject<URoomGenerator>(this, TEXT("RoomGenerator"));
+		if (!RoomGenerator)
+		{ DebugHelpers->LogCritical(TEXT("Failed to create RoomGenerator! ")); return false; }
+	}
+
+	// Initialize if needed
+	if (!RoomGenerator->IsInitialized())
+	{
+		DebugHelpers->LogVerbose(TEXT("Initializing RoomGenerator..."));
+		if (!RoomGenerator->Initialize(RoomData))
+		{ DebugHelpers->LogCritical(TEXT("Failed to initialize RoomGenerator!")); return false; }
+
+		DebugHelpers->LogVerbose(TEXT("Creating grid cells..."));
+		RoomGenerator->CreateGrid();
+	}
+	return true;
+}
+
 void ARoomSpawner::GenerateRoomGrid()
 {
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE ROOM GRID"));
-
-	// Validate RoomData
-	if (!RoomData)
+	
+	if (!EnsureGeneratorReady())
 	{
-		DebugHelpers->LogCritical(TEXT("RoomData is not assigned!  Please assign a RoomData asset.")); return;
+		DebugHelpers->LogCritical(TEXT("Failed to initialize generator!"));
+		DebugHelpers->LogSectionHeader(TEXT("GENERATE ROOM GRID"));
+		return;
 	}
-
-	// Initialize generator
-	if (!InitializeGenerator())
-	{
-		DebugHelpers->LogCritical(TEXT("Failed to initialize RoomGenerator!")); return;
-	}
-
-	// Create the grid
-	RoomGenerator->CreateGrid();
-	bIsGenerated = true;
-
-	// Log statistics
-	LogRoomStatistics();
-
-	// Update visualization
+	
+	// CREATE DEBUG VISUALIZATION (heavy, debug-only)
+	DebugHelpers->LogImportant(TEXT("Creating debug visualization... "));
+	
 	UpdateVisualization();
-
+	
+	// Set flag for external checks
+	bIsGenerated = true;
+	
+	LogRoomStatistics();
+	
 	DebugHelpers->LogImportant(TEXT("Room grid generated successfully!"));
-	// End header
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE ROOM GRID"));
 }
 
@@ -67,11 +88,16 @@ void ARoomSpawner::ClearRoomGrid()
 
 	if (! RoomGenerator || !bIsGenerated)
 	{
-		DebugHelpers->LogImportant(TEXT("No room grid to clear. ")); return;
+		DebugHelpers->LogImportant(TEXT("No room grid to clear. "));
+		DebugHelpers->LogSectionHeader(TEXT("CLEAR ROOM GRID"));
+		return;
 	}
 	
 	// Clear floor meshes first
 	ClearFloorMeshes();
+	
+	// Clear wall meshes
+	ClearWallMeshes();
 
 	// Clear the grid
 	RoomGenerator->ClearGrid();
@@ -84,38 +110,24 @@ void ARoomSpawner::ClearRoomGrid()
 	DebugHelpers->ClearDebugDrawings();
 
 	DebugHelpers->LogImportant(TEXT("Room grid cleared. "));
+	DebugHelpers->LogSectionHeader(TEXT("CLEAR ROOM GRID"));
 }
 
 void ARoomSpawner::GenerateFloorMeshes()
 {
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
 	
-	// VALIDATION: Check RoomData
-	if (!RoomData)
+	if (!EnsureGeneratorReady())
 	{
-		DebugHelpers->LogCritical(TEXT("RoomData is not assigned!  Cannot generate floor meshes."));
+		DebugHelpers->LogCritical(TEXT("Failed to initialize generator!"));
 		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
 		return;
-	}
-	
-	// AUTO-GENERATION: Create grid if needed
-	if (! RoomGenerator || !bIsGenerated)
-	{
-		DebugHelpers->LogImportant(TEXT("Grid not found.  Auto-generating grid..."));
-		GenerateRoomGrid();
-
-		if (!RoomGenerator || !bIsGenerated)
-		{
-			DebugHelpers->LogCritical(TEXT("Auto-generation of grid failed!"));
-			DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
-			return;
-		}
 	}
 	
 	// CLEANUP: Clear existing floor meshes
 	ClearFloorMeshes();
 	
-	// GENERATE FLOOR LAYOUT (This was missing!)
+	// Generate Floor Layout
 	DebugHelpers->LogImportant(TEXT("Generating floor layout..."));
 	if (! RoomGenerator->GenerateFloor())
 	{
@@ -127,10 +139,10 @@ void ARoomSpawner::GenerateFloorMeshes()
 	// SPAWNING: Get placed meshes from generator
 	const TArray<FPlacedMeshInfo>& PlacedMeshes = RoomGenerator->GetPlacedFloorMeshes();
 	DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d floor mesh instances... "), PlacedMeshes.Num()));
-
+	
 	// Get room origin for world space conversion
 	FVector RoomOrigin = GetActorLocation();
-	   
+	
 	// SPAWNING: Create ISM components and add instances
 	for (const FPlacedMeshInfo& PlacedMesh : PlacedMeshes)
 	{
@@ -154,10 +166,9 @@ void ARoomSpawner::GenerateFloorMeshes()
 			}
 		}
 	}
-
+	
 	DebugHelpers->LogImportant(FString::Printf(TEXT("Floor meshes generated: %d instances across %d unique meshes"),
-	PlacedMeshes.Num(),	FloorMeshComponents.Num()));
-	DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
+	PlacedMeshes.Num(),	FloorMeshComponents.Num())); DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
 }
 
 void ARoomSpawner::ClearFloorMeshes()
@@ -165,97 +176,32 @@ void ARoomSpawner::ClearFloorMeshes()
 	// Clear all floor ISM components
 	UDungeonSpawnerHelpers:: ClearISMComponentMap(FloorMeshComponents);
 
-	// Clear generator data
-	if (RoomGenerator) RoomGenerator->ClearPlacedFloorMeshes();
+	// Clear generator data AND reset grid state
+	if (RoomGenerator)
+	{
+		// Clear placed mesh array
+		RoomGenerator->ClearPlacedFloorMeshes();
+		
+		// Reset grid cells back to empty for fresh generation
+		RoomGenerator->ResetGridCellStates();
+	}
 	DebugHelpers->LogImportant(TEXT("Floor meshes cleared"));
-}
-
-void ARoomSpawner::SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVector& RoomOrigin)
-{
-	// Validate mesh asset
-	if (PlacedMesh.MeshInfo.MeshAsset.IsNull())
-	{
-		DebugHelpers->LogVerbose(TEXT("Skipping mesh with null asset")); return;
-	}
-
-	// Get or create instanced static mesh component for this mesh type
-	UInstancedStaticMeshComponent* ISMComponent = nullptr;
-
-	if (FloorMeshComponents. Contains(PlacedMesh. MeshInfo.MeshAsset))
-	{
-		ISMComponent = FloorMeshComponents[PlacedMesh.MeshInfo.MeshAsset];
-	}
-	else
-	{
-		// Create new ISM component
-		ISMComponent = NewObject<UInstancedStaticMeshComponent>(this);
-		ISMComponent->RegisterComponent();
-		ISMComponent->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-
-		// Load and set static mesh
-		UStaticMesh* StaticMesh = PlacedMesh.MeshInfo.MeshAsset.LoadSynchronous();
-		if (StaticMesh) ISMComponent->SetStaticMesh(StaticMesh);
-
-		// Store component
-		FloorMeshComponents.Add(PlacedMesh.MeshInfo. MeshAsset, ISMComponent);
-	}
-
-	if (!ISMComponent)
-	{
-		DebugHelpers->LogVerbose(TEXT("Failed to create ISM component")); return;
-	}
-
-	// Use the WorldTransform we calculated in TryPlaceMesh
-	FVector LocalPos = PlacedMesh.WorldTransform. GetLocation();
-	FVector WorldPos = RoomOrigin + LocalPos;
-
-	// DEBUG: Log the spawn position
-	UE_LOG(LogTemp, Warning, TEXT("SpawnFloorMesh: Grid(%d,%d) Size(%d,%d) LocalPos(%s) RoomOrigin(%s) -> WorldPos(%s)"),
-	PlacedMesh.GridPosition.X, PlacedMesh.GridPosition.Y, PlacedMesh. Size.X, PlacedMesh.Size.Y,
-	*LocalPos.ToString(), *RoomOrigin.ToString(), *WorldPos.ToString());
-
-	FTransform InstanceTransform( FRotator(0, PlacedMesh.Rotation, 0), WorldPos,FVector::OneVector);
-
-	// Add instance
-	ISMComponent->AddInstance(InstanceTransform);
 }
 
 void ARoomSpawner::GenerateWallMeshes()
 {
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
 
-	// Validate RoomData
-	if (!RoomData)
+	if (!EnsureGeneratorReady())
 	{
-		DebugHelpers->LogCritical(TEXT("RoomData is not assigned!  Cannot generate wall meshes. "));
-		DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
+		DebugHelpers->LogCritical(TEXT("Failed to initialize generator!"));
+		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
 		return;
 	}
-
-	if (!RoomData->WallStyleData.IsValid())
-	{
-		DebugHelpers->LogCritical(TEXT("WallStyleData is not assigned in RoomData!  "));
-		DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
-		return;
-	}
-
-	// Auto-generate grid if needed
-	if (!  RoomGenerator || ! bIsGenerated)
-	{
-		DebugHelpers->LogImportant(TEXT("Grid not found.   Auto-generating grid..."));
-		GenerateRoomGrid();
-
-		if (!RoomGenerator || !  bIsGenerated)
-		{
-			DebugHelpers->LogCritical(TEXT("Auto-generation of grid failed!"));
-			DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
-			return;
-		}
-	}
-
+	
 	// Clear existing wall meshes
 	ClearWallMeshes();
-
+	
 	// Generate wall layout (logic only)
 	DebugHelpers->LogImportant(TEXT("Generating wall layout..."));
 	if (! RoomGenerator->GenerateWalls())
@@ -264,47 +210,19 @@ void ARoomSpawner::GenerateWallMeshes()
 		DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
 		return;
 	}
-
-	// Get placed walls from generator
+	
+	// Get placed walls and spawn
 	const TArray<FPlacedWallInfo>& PlacedWalls = RoomGenerator->GetPlacedWalls();
 	DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d wall segments...  "), PlacedWalls.Num()));
-
-	// ✅ ADD THIS LINE - Get room origin for world space conversion
+	
+	// Get room origin for world space conversion
 	FVector RoomOrigin = GetActorLocation();
-
-	// Spawn walls in world
+	
+	// Spawn wall segments
 	for (const FPlacedWallInfo& PlacedWall : PlacedWalls) { SpawnWallSegment(PlacedWall, RoomOrigin);}
-
+	
 	DebugHelpers->LogImportant(TEXT("Wall meshes generated successfully!"));
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
-}
-
-void ARoomSpawner::ClearWallMeshes()
-{
-	// Clear all wall ISM components
-	UDungeonSpawnerHelpers::ClearISMComponentMap(WallMeshComponents);
-
-	// Clear generator data
-	if (RoomGenerator) { RoomGenerator->ClearPlacedWalls();	}
-	DebugHelpers->LogImportant(TEXT("Wall meshes cleared"));
-}
-
-void ARoomSpawner::RefreshVisualization()
-{
-	DebugHelpers->LogImportant(TEXT("Refreshing visualization..."));
-
-	if (!bIsGenerated || !RoomGenerator)
-	{
-		DebugHelpers->LogImportant(TEXT("No room to visualize.  Generate a room first.")); return;
-	}
-
-	// Clear existing drawings
-	DebugHelpers->ClearDebugDrawings();
-
-	// Redraw with current settings
-	UpdateVisualization();
-
-	DebugHelpers->LogImportant(TEXT("Visualization refreshed. "));
 }
 
 void ARoomSpawner::SpawnWallSegment(const FPlacedWallInfo& PlacedWall, const FVector& RoomOrigin)
@@ -324,6 +242,7 @@ void ARoomSpawner::SpawnWallSegment(const FPlacedWallInfo& PlacedWall, const FVe
 			(int32)PlacedWall.Edge, PlacedWall.StartCell, InstanceIndex));
 		}
 	}
+	
 	// SPAWN MIDDLE1 MESH (Optional - First Middle Layer)
 	if (! PlacedWall.WallModule.MiddleMesh1. IsNull())
 	{
@@ -377,6 +296,34 @@ void ARoomSpawner::SpawnWallSegment(const FPlacedWallInfo& PlacedWall, const FVe
 			}
 		}
 	}
+}
+
+void ARoomSpawner::ClearWallMeshes()
+{
+	// Clear all wall ISM components
+	UDungeonSpawnerHelpers::ClearISMComponentMap(WallMeshComponents);
+
+	// Clear generator data
+	if (RoomGenerator) { RoomGenerator->ClearPlacedWalls();	}
+	DebugHelpers->LogImportant(TEXT("Wall meshes cleared"));
+}
+
+void ARoomSpawner::RefreshVisualization()
+{
+	DebugHelpers->LogImportant(TEXT("Refreshing visualization..."));
+
+	if (!bIsGenerated || !RoomGenerator)
+	{
+		DebugHelpers->LogImportant(TEXT("No room to visualize.  Generate a room first.")); return;
+	}
+
+	// Clear existing drawings
+	DebugHelpers->ClearDebugDrawings();
+
+	// Redraw with current settings
+	UpdateVisualization();
+
+	DebugHelpers->LogImportant(TEXT("Visualization refreshed. "));
 }
 #pragma endregion
 
@@ -461,10 +408,7 @@ void ARoomSpawner::DestroyTextRenderComponent(UTextRenderComponent* TextComp)
 
 void ARoomSpawner::LogRoomStatistics()
 {
-	if (!RoomGenerator)
-	{
-		return;
-	}
+	if (!RoomGenerator) return;
 
 	DebugHelpers->LogSectionHeader(TEXT("ROOM STATISTICS"));
 	
@@ -480,16 +424,12 @@ void ARoomSpawner::LogRoomStatistics()
 	DebugHelpers->LogStatistic(TEXT("Occupied Cells"), OccupiedCells);
 	DebugHelpers->LogStatistic(TEXT("Occupancy"), OccupancyPercent);
 	
-	// End header (NEW)
 	DebugHelpers->LogSectionHeader(TEXT("ROOM STATISTICS"));
 }
 
 void ARoomSpawner::LogFloorStatistics()
 {
-	if (!RoomGenerator)
-	{
-		return;
-	}
+	if (!RoomGenerator) return;
 
 	DebugHelpers->LogSectionHeader(TEXT("FLOOR STATISTICS"));
 
@@ -510,20 +450,6 @@ void ARoomSpawner::LogFloorStatistics()
 
 	DebugHelpers->LogSectionHeader(TEXT("FLOOR STATISTICS"));
 }
-#pragma endregion
-#endif // WITH_EDITOR
-
-bool ARoomSpawner::InitializeGenerator()
-{
-	// Create generator if it doesn't exist
-	if (!RoomGenerator)
-	{
-		RoomGenerator = NewObject<URoomGenerator>(this, URoomGenerator::StaticClass());
-	}
-
-	// Initialize with RoomData
-	return RoomGenerator->Initialize(RoomData);
-}
 
 void ARoomSpawner::UpdateVisualization()
 {
@@ -538,14 +464,12 @@ void ARoomSpawner::UpdateVisualization()
 
 	// Draw forced empty regions (if any)
 	if (RoomData && RoomData->ForcedEmptyRegions.Num() > 0)
-	{
-		DebugHelpers->DrawForcedEmptyRegions(RoomData->ForcedEmptyRegions, GridSize, CellSize, RoomOrigin);
-	}
+	{ DebugHelpers->DrawForcedEmptyRegions(RoomData->ForcedEmptyRegions, GridSize, CellSize, RoomOrigin); }
 
 	// Draw forced empty cells (if any)
 	if (RoomData && RoomData->ForcedEmptyFloorCells.Num() > 0)
-	{
-		DebugHelpers->DrawForcedEmptyCells(RoomData->ForcedEmptyFloorCells, GridSize, CellSize, RoomOrigin);
-	}
+	{ DebugHelpers->DrawForcedEmptyCells(RoomData->ForcedEmptyFloorCells, GridSize, CellSize, RoomOrigin);}
 	DebugHelpers->LogVerbose(TEXT("Visualization updated."));
 }
+#pragma endregion
+#endif // WITH_EDITOR

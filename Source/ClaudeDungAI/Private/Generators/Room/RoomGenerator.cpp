@@ -33,7 +33,7 @@ bool URoomGenerator::Initialize(URoomData* InRoomData)
 #pragma region Room Grid Management
 void URoomGenerator::CreateGrid()
 {
-	if (!bIsInitialized) {UE_LOG(LogTemp, Error, TEXT("URoomGenerator::CreateGrid - Generator not initialized!")); return; }
+	if (!bIsInitialized) { UE_LOG(LogTemp, Error, TEXT("URoomGenerator::CreateGrid - Generator not initialized!")); return; }
 
 	// Calculate total cells needed
 	int32 TotalCells = GridSize.X * GridSize.Y;
@@ -48,14 +48,38 @@ void URoomGenerator::CreateGrid()
 
 void URoomGenerator:: ClearGrid()
 {
-	if (!bIsInitialized) {UE_LOG(LogTemp, Error, TEXT("URoomGenerator::ClearGrid - Generator not initialized!")); return; }
+	GridState.Empty();
+	PlacedFloorMeshes. Empty();
+	PlacedWalls.Empty();
+	PlacedBaseWallSegments.Empty();
 
-	// Reset all cells to Empty
-	for (EGridCellType& Cell : GridState) { Cell = EGridCellType::ECT_Empty; }
+	// Reset statistics
+	LargeTilesPlaced = 0;
+	MediumTilesPlaced = 0;
+	SmallTilesPlaced = 0;
+	FillerTilesPlaced = 0;
 
-	// Clear placed meshes
-	ClearPlacedFloorMeshes();
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ClearGrid - Grid cleared"));
+}
+
+void URoomGenerator::ResetGridCellStates()
+{
+	if (! bIsInitialized)
+	{ UE_LOG(LogTemp, Warning, TEXT("URoomGenerator::ResetGridCellStates - Not initialized! ")); return; }
+
+	// Reset all cells to empty
+	int32 CellsReset = 0;
+	for (EGridCellType& Cell : GridState)
+	{
+		if (Cell != EGridCellType::ECT_Empty)
+		{
+			Cell = EGridCellType:: ECT_Empty;
+			CellsReset++;
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ResetGridCellStates - Reset %d cells to empty (Total: %d)"), 
+		CellsReset, GridState.Num());
 }
 
 EGridCellType URoomGenerator:: GetCellState(FIntPoint GridCoord) const
@@ -127,6 +151,8 @@ bool URoomGenerator::ClearArea(FIntPoint StartCoord, FIntPoint Size)
 	}
 	return true;
 }
+
+
 #pragma endregion
 
 #pragma region Floor Generation
