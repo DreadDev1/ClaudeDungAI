@@ -360,10 +360,26 @@ void ARoomSpawner:: ToggleGrid()
 
 void ARoomSpawner:: ToggleCellStates()
 {
-	DebugHelpers->bShowCellStates = !DebugHelpers->bShowCellStates;
+	  
+	// Toggle cell state visualization
+	DebugHelpers->bShowCellStates = ! DebugHelpers->bShowCellStates;
+	DebugHelpers->bShowForcedEmptyRegions = DebugHelpers->bShowCellStates;
+	DebugHelpers->bShowForcedEmptyCells = DebugHelpers->bShowCellStates;
+    
+	// ✅ NEW: Also toggle grid lines with cell states
+	// Grid provides context for understanding cell visualization
+	DebugHelpers->bShowGrid = DebugHelpers->bShowCellStates;
+    
 	DebugHelpers->LogImportant(FString::Printf(TEXT("Cell states display: %s"), 
-		DebugHelpers->bShowCellStates ? TEXT("ON") : TEXT("OFF")));
-	
+		DebugHelpers->bShowCellStates ?  TEXT("ON") : TEXT("OFF")));
+    
+	if (!bIsGenerated || !RoomGenerator)
+	{
+		DebugHelpers->LogImportant(TEXT("No room to visualize. Generate a room first."));
+		return;
+	}
+    
+	// Use standard refresh (clear and redraw everything based on toggle states)
 	RefreshVisualization();
 }
 
