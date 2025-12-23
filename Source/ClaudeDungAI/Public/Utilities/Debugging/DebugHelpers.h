@@ -20,10 +20,9 @@ enum class EDebugLogLevel : uint8
 
 class UTextRenderComponent;
 
-// NEW:  Delegate for requesting text render components from owner
+// Delegate for requesting text render components from owner
 DECLARE_DELEGATE_RetVal_FourParams(UTextRenderComponent*, FOnCreateTextComponent, FVector /*WorldPosition*/, FString /*Text*/, FColor /*Color*/, float /*Scale*/);
-
-// ✅ NEW:  Delegate for destroying text render components
+// Delegate for destroying text render components
 DECLARE_DELEGATE_OneParam(FOnDestroyTextComponent, UTextRenderComponent*);
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
@@ -35,11 +34,11 @@ public:
 	// Sets default values for this component's properties
 	UDebugHelpers();
 
-#pragma region Debug Settings
 	// Master switch for all debug functionality
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings")
 	bool bEnableDebug = true;
-
+	
+#pragma region Debug Settings|Visualization
 	// Show grid outline
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Visualization")
 	bool bShowGrid = true;
@@ -119,20 +118,6 @@ public:
 	float CellBoxThickness = 3.0f;
 #pragma endregion
 	
-#pragma region Text Settings
-	// Coordinate text color
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Text")
-	FColor CoordinateTextColor = FColor::Orange;
-
-	// Coordinate text scale
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Text", meta = (ClampMin = "0.1", ClampMax = "10.0"))
-	float CoordinateTextScale = 1.0f;
-
-	// Height offset for coordinate text above grid
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Text", meta = (ClampMin = "0.0", UIMin = "0.0"))
-	float CoordinateTextHeight = 30.0f;
-#pragma endregion
-	
 #pragma region Logging Settings
 	// Current debug log level
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Logging")
@@ -144,64 +129,28 @@ public:
 #pragma endregion
 
 #pragma region Debug Drawing
-	/**
-	 * Draw complete grid visualization with all enabled features
-	 * @param GridSize - Size of grid in cells
-	 * @param GridState - Current state of each cell
-	 * @param CellSize - Size of each cell in cm
-	 * @param OriginLocation - World location of grid origin
-	 */
+	/* Draw complete grid visualization with all enabled features */
 	void DrawGrid(FIntPoint GridSize, const TArray<EGridCellType>& GridState, float CellSize, FVector OriginLocation);
 
-	/**
-	 * Draw forced empty regions (rectangular areas)
-	 * @param Regions - Array of regions to visualize
-	 * @param GridSize - Size of grid for bounds checking
-	 * @param CellSize - Size of each cell in cm
-	 * @param OriginLocation - World location of grid origin
-	 */
+	/* Draw forced empty regions (rectangular areas) */
 	void DrawForcedEmptyRegions(const TArray<FForcedEmptyRegion>& Regions, FIntPoint GridSize, float CellSize, FVector OriginLocation);
 
-	/**
-	 * Draw forced empty individual cells
-	 * @param Cells - Array of cell coordinates
-	 * @param GridSize - Size of grid for bounds checking
-	 * @param CellSize - Size of each cell in cm
-	 * @param OriginLocation - World location of grid origin
-	 */
+	/* Draw forced empty individual cells */
 	void DrawForcedEmptyCells(const TArray<FIntPoint>& Cells, FIntPoint GridSize, float CellSize, FVector OriginLocation);
 
-	/**
- * Draw a single cell box at grid coordinate
- */
+	/* Draw a single cell box at grid coordinate */
 	void DrawCellBox(FIntPoint GridCoord, FColor Color, float CellSize, FVector OriginLocation, float ZOffset);
 
-	/**
-	 * Draw grid lines (X and Y axis)
-	 */
+	/* Draw grid lines (X and Y axis) */
 	void DrawGridLines(FIntPoint GridSize, float CellSize, FVector OriginLocation);
 
-	/**
-	 * Draw cell state boxes (red/blue for occupied/empty)
-	 */
+	/* Draw cell state boxes (red/blue for occupied/empty) */
 	void DrawCellStates(FIntPoint GridSize, const TArray<EGridCellType>& GridState, float CellSize, FVector OriginLocation);
-
-	/**
-	 * Draw coordinate text using text render components
-	 */
-	void DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, float CellSize, FVector OriginLocation);
 #pragma endregion
 	
 #pragma region Debuging Cleanup
-	/**
-	 * Clear all debug drawings (lines and boxes)
-	 */
+	/* Clear all debug drawings (lines and boxes) */
 	void ClearDebugDrawings();
-
-	/**
-	 * Clear coordinate text components
-	 */
-	void ClearCoordinateTextComponents();
 #pragma endregion
 	
 #pragma region Debug Logging
@@ -223,47 +172,52 @@ public:
 	void LogSectionHeader(const FString& Title);
 #pragma endregion
 	
-#pragma region Delegate
+#pragma region Grid Coordinate Text Rendering
 	// Delegate for requesting text component creation from owner
 	FOnCreateTextComponent OnCreateTextComponent;
 
-	// ✅ NEW: Delegate for requesting text component destruction from owner
+	// Delegate for requesting text component destruction from owner
 	FOnDestroyTextComponent OnDestroyTextComponent;
+	
+	// Coordinate text color
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Text")
+	FColor CoordinateTextColor = FColor::Orange;
+
+	// Coordinate text scale
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Text", meta = (ClampMin = "0.1", ClampMax = "10.0"))
+	float CoordinateTextScale = 1.0f;
+
+	// Height offset for coordinate text above grid
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug Settings|Text", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float CoordinateTextHeight = 30.0f;
+	
+	UPROPERTY()
+	TArray<UTextRenderComponent*> CoordinateTextComponents;
+	
+	/*Draw coordinate text using text render components */
+	void DrawGridCoordinatesWithTextComponents(FIntPoint GridSize, float CellSize, FVector OriginLocation);
+	
+	/* Clear coordinate text components */
+	void ClearCoordinateTextComponents();
 #pragma endregion
 	
 private:
 #pragma region Internal Data
-	// Cached coordinate text components
-	UPROPERTY()
-	TArray<UTextRenderComponent*> CoordinateTextComponents;
-
 	// Owner actor name for logging
 	FString OwnerActorName;
 #pragma endregion
 	
 #pragma region Internal Helpers
-	/**
-	 * Get color for a specific cell type
-	 */
+	/* Get color for a specific cell type */
 	FColor GetColorForCellType(EGridCellType CellType) const;
 
-
-
-	/**
-	 * Convert grid coordinate to world position (cell center)
-	 */
+	/* Convert grid coordinate to world position (cell center) */
 	FVector GridToWorldPosition(FIntPoint GridCoord, float CellSize, FVector OriginLocation) const;
 
-	/**
-	 * Get formatted log prefix with category and owner name
-	 */
+	/* Get formatted log prefix with category and owner name */
 	FString GetCategoryPrefix() const;
 
-	/**
-	 * Check if message should be logged based on current log level
-	 */
+	/* Check if message should be logged based on current log level */
 	bool ShouldLog(EDebugLogLevel MessageLevel) const;
 #pragma endregion
-	
-
 };

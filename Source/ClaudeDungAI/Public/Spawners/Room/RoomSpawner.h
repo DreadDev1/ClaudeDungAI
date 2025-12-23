@@ -71,30 +71,18 @@ public:
 	/* Toggle coordinate display */
 	UFUNCTION(CallInEditor, Category = "Room Generation|Debug")
 	void ToggleCoordinates();
-
 	
-	
-	/**
-	 * Create a text render component at specified world location
-	 * Called by DebugHelpers via delegate
-	 */
+	/* Create a text render component at specified world location Called by DebugHelpers via delegate */
 	UTextRenderComponent* CreateTextRenderComponent(FVector WorldPosition, FString Text, FColor Color, float Scale);
 
-	/**
-	* ✅ NEW: Destroy a text render component
-	* Called by DebugHelpers via delegate
-	*/
+	/* Destroy a text render component Called by DebugHelpers via delegate */
 	void DestroyTextRenderComponent(UTextRenderComponent* TextComp);
 
-	/**
-	 * Toggle grid outline display
-	 */
+	/* Toggle grid outline display */
 	UFUNCTION(CallInEditor, Category = "Room Generation|Debug")
 	void ToggleGrid();
 
-	/**
-	 * Toggle cell state visualization
-	 */
+	/* Toggle cell state visualization */
 	UFUNCTION(CallInEditor, Category = "Room Generation|Debug")
 	void ToggleCellStates();
 #pragma endregion
