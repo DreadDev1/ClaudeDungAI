@@ -1,11 +1,12 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Spawners/Room/RoomSpawner.h"
-
+#include "Generators/Room/RoomGenerator.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Data/Room/WallData.h" 
-#include "Generators/Room/RoomGenerator.h"
+#include "Utilities/Helpers/DungeonGenerationHelpers.h"
+#include "Utilities/Spawners/DungeonSpawnerHelpers.h" 
 
 // Sets default values
 ARoomSpawner::ARoomSpawner()
@@ -36,15 +37,13 @@ void ARoomSpawner::GenerateRoomGrid()
 	// Validate RoomData
 	if (!RoomData)
 	{
-		DebugHelpers->LogCritical(TEXT("RoomData is not assigned!  Please assign a RoomData asset."));
-		return;
+		DebugHelpers->LogCritical(TEXT("RoomData is not assigned!  Please assign a RoomData asset.")); return;
 	}
 
 	// Initialize generator
 	if (!InitializeGenerator())
 	{
-		DebugHelpers->LogCritical(TEXT("Failed to initialize RoomGenerator!"));
-		return;
+		DebugHelpers->LogCritical(TEXT("Failed to initialize RoomGenerator!")); return;
 	}
 
 	// Create the grid
@@ -68,8 +67,7 @@ void ARoomSpawner::ClearRoomGrid()
 
 	if (! RoomGenerator || !bIsGenerated)
 	{
-		DebugHelpers->LogImportant(TEXT("No room grid to clear. "));
-		return;
+		DebugHelpers->LogImportant(TEXT("No room grid to clear. ")); return;
 	}
 	
 	// Clear floor meshes first
@@ -79,7 +77,6 @@ void ARoomSpawner::ClearRoomGrid()
 	RoomGenerator->ClearGrid();
 	bIsGenerated = false;
 	
-
 	// Clear coordinate text components (DebugHelpers manages them)
 	DebugHelpers->ClearCoordinateTextComponents();
 	
@@ -92,29 +89,21 @@ void ARoomSpawner::ClearRoomGrid()
 void ARoomSpawner::GenerateFloorMeshes()
 {
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
-
-	// Validate RoomData
+	
+	// VALIDATION: Check RoomData
 	if (!RoomData)
 	{
 		DebugHelpers->LogCritical(TEXT("RoomData is not assigned!  Cannot generate floor meshes."));
 		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
 		return;
 	}
-
-	if (!RoomData->FloorStyleData. IsValid())
+	
+	// AUTO-GENERATION: Create grid if needed
+	if (! RoomGenerator || !bIsGenerated)
 	{
-		DebugHelpers->LogCritical(TEXT("FloorStyleData is not assigned in RoomData! "));
-		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
-		return;
-	}
+		DebugHelpers->LogImportant(TEXT("Grid not found.  Auto-generating grid..."));
+		GenerateRoomGrid();
 
-	// AUTO-GENERATE GRID:  If grid doesn't exist, create it automatically
-	if (!RoomGenerator || !bIsGenerated)
-	{
-		DebugHelpers->LogImportant(TEXT("Grid not found. Auto-generating grid..."));
-		GenerateRoomGrid();  // This will create RoomGenerator and grid
-		
-		// Verify generation succeeded
 		if (!RoomGenerator || !bIsGenerated)
 		{
 			DebugHelpers->LogCritical(TEXT("Auto-generation of grid failed!"));
@@ -122,59 +111,53 @@ void ARoomSpawner::GenerateFloorMeshes()
 			return;
 		}
 	}
-
-	// Clear existing floor meshes
+	
+	// CLEANUP: Clear existing floor meshes
 	ClearFloorMeshes();
-
-	// Generate floor layout (logic only)
-	DebugHelpers->LogImportant(TEXT("Generating floor layout... "));
-	if (! RoomGenerator->GenerateFloor())
-	{
-		DebugHelpers->LogCritical(TEXT("Floor generation failed!"));
-		DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
-		return;
-	}
-
-	// Get placed meshes from generator
+	   
+	// SPAWNING: Get placed meshes from generator
 	const TArray<FPlacedMeshInfo>& PlacedMeshes = RoomGenerator->GetPlacedFloorMeshes();
-	DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d floor mesh instances...  "), PlacedMeshes.Num()));
+	DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d floor mesh instances... "), PlacedMeshes.Num()));
 
-	// Spawn meshes in world
+	// Get room origin for world space conversion
 	FVector RoomOrigin = GetActorLocation();
+	   
+	// SPAWNING: Create ISM components and add instances
 	for (const FPlacedMeshInfo& PlacedMesh : PlacedMeshes)
 	{
-		SpawnFloorMesh(PlacedMesh, RoomOrigin);
+		// Get or create ISM component for this mesh
+		UInstancedStaticMeshComponent* ISM = UDungeonSpawnerHelpers::GetOrCreateISMComponent(this,
+		PlacedMesh.MeshInfo.MeshAsset,FloorMeshComponents,TEXT("FloorISM_"),true);
+
+		if (ISM)
+		{
+			int32 InstanceIndex = UDungeonSpawnerHelpers:: SpawnMeshInstance( ISM, PlacedMesh.WorldTransform, RoomOrigin);
+
+			if (InstanceIndex >= 0)
+			{
+				DebugHelpers->LogVerbose(FString::Printf( TEXT("  Spawned floor mesh at grid position (%d, %d), instance %d"),
+				PlacedMesh.GridPosition.X, PlacedMesh. GridPosition.Y, InstanceIndex));
+			}
+			else
+			{
+				DebugHelpers->LogVerbose(FString::Printf(TEXT("  Failed to spawn floor mesh at grid position (%d, %d)"),
+				PlacedMesh.GridPosition.X, PlacedMesh.GridPosition.Y));
+			}
+		}
 	}
 
-	// Update visualization (green cells should turn red)
-	UpdateVisualization();
-
-	// Log statistics
-	LogFloorStatistics();
-
-	DebugHelpers->LogImportant(TEXT("Floor meshes generated successfully!"));
+	DebugHelpers->LogImportant(FString::Printf(TEXT("Floor meshes generated: %d instances across %d unique meshes"),
+	PlacedMeshes.Num(),	FloorMeshComponents.Num()));
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE FLOOR MESHES"));
 }
 
 void ARoomSpawner::ClearFloorMeshes()
 {
-	// Destroy all instanced static mesh components
-	for (auto& Pair : FloorMeshComponents)
-	{
-		if (Pair.Value && Pair.Value->IsValidLowLevel())
-		{
-			Pair.Value->DestroyComponent();
-		}
-	}
+	// Clear all floor ISM components
+	UDungeonSpawnerHelpers:: ClearISMComponentMap(FloorMeshComponents);
 
-	FloorMeshComponents.Empty();
-
-	// Clear generator's placed mesh data
-	if (RoomGenerator)
-	{
-		RoomGenerator->ClearPlacedFloorMeshes();
-	}
-
+	// Clear generator data
+	if (RoomGenerator) RoomGenerator->ClearPlacedFloorMeshes();
 	DebugHelpers->LogImportant(TEXT("Floor meshes cleared"));
 }
 
@@ -183,8 +166,7 @@ void ARoomSpawner::SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVect
 	// Validate mesh asset
 	if (PlacedMesh.MeshInfo.MeshAsset.IsNull())
 	{
-		DebugHelpers->LogVerbose(TEXT("Skipping mesh with null asset"));
-		return;
+		DebugHelpers->LogVerbose(TEXT("Skipping mesh with null asset")); return;
 	}
 
 	// Get or create instanced static mesh component for this mesh type
@@ -203,10 +185,7 @@ void ARoomSpawner::SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVect
 
 		// Load and set static mesh
 		UStaticMesh* StaticMesh = PlacedMesh.MeshInfo.MeshAsset.LoadSynchronous();
-		if (StaticMesh)
-		{
-			ISMComponent->SetStaticMesh(StaticMesh);
-		}
+		if (StaticMesh) ISMComponent->SetStaticMesh(StaticMesh);
 
 		// Store component
 		FloorMeshComponents.Add(PlacedMesh.MeshInfo. MeshAsset, ISMComponent);
@@ -214,8 +193,7 @@ void ARoomSpawner::SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVect
 
 	if (!ISMComponent)
 	{
-		DebugHelpers->LogVerbose(TEXT("Failed to create ISM component"));
-		return;
+		DebugHelpers->LogVerbose(TEXT("Failed to create ISM component")); return;
 	}
 
 	// Use the WorldTransform we calculated in TryPlaceMesh
@@ -224,15 +202,10 @@ void ARoomSpawner::SpawnFloorMesh(const FPlacedMeshInfo& PlacedMesh, const FVect
 
 	// DEBUG: Log the spawn position
 	UE_LOG(LogTemp, Warning, TEXT("SpawnFloorMesh: Grid(%d,%d) Size(%d,%d) LocalPos(%s) RoomOrigin(%s) -> WorldPos(%s)"),
-		PlacedMesh.GridPosition.X, PlacedMesh.GridPosition.Y,
-		PlacedMesh. Size.X, PlacedMesh.Size.Y,
-		*LocalPos.ToString(), *RoomOrigin.ToString(), *WorldPos.ToString());
+	PlacedMesh.GridPosition.X, PlacedMesh.GridPosition.Y, PlacedMesh. Size.X, PlacedMesh.Size.Y,
+	*LocalPos.ToString(), *RoomOrigin.ToString(), *WorldPos.ToString());
 
-	FTransform InstanceTransform(
-		FRotator(0, PlacedMesh.Rotation, 0),
-		WorldPos,
-		FVector::OneVector
-	);
+	FTransform InstanceTransform( FRotator(0, PlacedMesh.Rotation, 0), WorldPos,FVector::OneVector);
 
 	// Add instance
 	ISMComponent->AddInstance(InstanceTransform);
@@ -291,10 +264,7 @@ void ARoomSpawner::GenerateWallMeshes()
 	FVector RoomOrigin = GetActorLocation();
 
 	// Spawn walls in world
-	for (const FPlacedWallInfo& PlacedWall : PlacedWalls)
-	{
-		SpawnWallSegment(PlacedWall, RoomOrigin);
-	}
+	for (const FPlacedWallInfo& PlacedWall : PlacedWalls) { SpawnWallSegment(PlacedWall, RoomOrigin);}
 
 	DebugHelpers->LogImportant(TEXT("Wall meshes generated successfully!"));
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
@@ -302,23 +272,11 @@ void ARoomSpawner::GenerateWallMeshes()
 
 void ARoomSpawner::ClearWallMeshes()
 {
-	// Destroy all wall mesh components
-	for (auto& Pair : WallMeshComponents)
-	{
-		if (Pair.Value && Pair.Value->IsValidLowLevel())
-		{
-			Pair.Value->DestroyComponent();
-		}
-	}
+	// Clear all wall ISM components
+	UDungeonSpawnerHelpers::ClearISMComponentMap(WallMeshComponents);
 
-	WallMeshComponents.Empty();
-
-	// Clear generator's placed wall data
-	if (RoomGenerator)
-	{
-		RoomGenerator->ClearPlacedWalls();
-	}
-
+	// Clear generator data
+	if (RoomGenerator) { RoomGenerator->ClearPlacedWalls();	}
 	DebugHelpers->LogImportant(TEXT("Wall meshes cleared"));
 }
 
@@ -328,8 +286,7 @@ void ARoomSpawner::RefreshVisualization()
 
 	if (!bIsGenerated || !RoomGenerator)
 	{
-		DebugHelpers->LogImportant(TEXT("No room to visualize.  Generate a room first."));
-		return;
+		DebugHelpers->LogImportant(TEXT("No room to visualize.  Generate a room first.")); return;
 	}
 
 	// Clear existing drawings
@@ -343,105 +300,72 @@ void ARoomSpawner::RefreshVisualization()
 
 void ARoomSpawner::SpawnWallSegment(const FPlacedWallInfo& PlacedWall, const FVector& RoomOrigin)
 {
-	// Helper lambda to get or create ISM component for a specific mesh
-	auto GetOrCreateWallISM = [this](const TSoftObjectPtr<UStaticMesh>& MeshAsset) -> UInstancedStaticMeshComponent*
-	{
-		// Return null if mesh asset is not set
-		if (MeshAsset.IsNull())
-			return nullptr;
-
-		// Check if we already have an ISM component for this mesh
-		if (WallMeshComponents.Contains(MeshAsset))
-		{
-			return WallMeshComponents[MeshAsset];
-		}
-
-		// Create new ISM component
-		FString ComponentName = FString::Printf(TEXT("WallISM_%s"), *MeshAsset.GetAssetName());
-		UInstancedStaticMeshComponent* NewISM = NewObject<UInstancedStaticMeshComponent>(this, FName(*ComponentName));
-
-		if (!NewISM)
-			return nullptr;
-
-		// Register and attach to root
-		NewISM->RegisterComponent();
-		NewISM->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-
-		// Load and set static mesh
-		UStaticMesh* StaticMesh = MeshAsset.LoadSynchronous();
-		if (StaticMesh)
-		{
-			NewISM->SetStaticMesh(StaticMesh);
-		}
-		else
-		{
-			DebugHelpers->LogVerbose(FString::Printf(TEXT("Failed to load mesh:  %s"), *MeshAsset.GetAssetName()));
-			return nullptr;
-		}
-
-		// Store component for reuse
-		WallMeshComponents.Add(MeshAsset, NewISM);
-		return NewISM;
-	};
-
-	// ========================================================================
 	// SPAWN BOTTOM MESH (Required - Base Layer)
-	// ========================================================================
-	if (UInstancedStaticMeshComponent* BottomISM = GetOrCreateWallISM(PlacedWall.WallModule.BaseMesh))
+	UInstancedStaticMeshComponent* BottomISM = UDungeonSpawnerHelpers::GetOrCreateISMComponent(this,
+	PlacedWall.WallModule.BaseMesh,WallMeshComponents,TEXT("WallISM_"), true);
+
+	if (BottomISM)
 	{
-		FTransform WorldTransform = PlacedWall.BottomTransform;
-		WorldTransform.SetLocation(RoomOrigin + PlacedWall.BottomTransform.GetLocation());
-		BottomISM->AddInstance(WorldTransform);
+		// Wall uses BottomTransform (check your FPlacedWallInfo struct)
+		int32 InstanceIndex = UDungeonSpawnerHelpers::SpawnMeshInstance( BottomISM, PlacedWall.BottomTransform, RoomOrigin);
 
-		DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawned base mesh at edge %d, cell %d"), 
-			(int32)PlacedWall.Edge, PlacedWall.StartCell));
+		if (InstanceIndex >= 0)
+		{
+			DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawned base mesh at edge %d, cell %d (instance %d)"), 
+			(int32)PlacedWall.Edge, PlacedWall.StartCell, InstanceIndex));
+		}
 	}
-
-	// ========================================================================
 	// SPAWN MIDDLE1 MESH (Optional - First Middle Layer)
-	// ========================================================================
-	if (! PlacedWall.WallModule.MiddleMesh1.IsNull())
+	if (! PlacedWall.WallModule.MiddleMesh1. IsNull())
 	{
-		if (UInstancedStaticMeshComponent* Middle1ISM = GetOrCreateWallISM(PlacedWall.WallModule.MiddleMesh1))
-		{
-			FTransform WorldTransform = PlacedWall.Middle1Transform;
-			WorldTransform.SetLocation(RoomOrigin + PlacedWall.Middle1Transform.GetLocation());
-			Middle1ISM->AddInstance(WorldTransform);
+		UInstancedStaticMeshComponent* Middle1ISM = UDungeonSpawnerHelpers::GetOrCreateISMComponent( this,
+		PlacedWall.WallModule.MiddleMesh1, WallMeshComponents, TEXT("WallISM_"), true);
 
-			DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawned middle1 mesh at edge %d, cell %d"), 
-				(int32)PlacedWall.Edge, PlacedWall.StartCell));
+		if (Middle1ISM)
+		{
+			int32 InstanceIndex = UDungeonSpawnerHelpers:: SpawnMeshInstance( Middle1ISM, PlacedWall.Middle1Transform, RoomOrigin);
+
+			if (InstanceIndex >= 0)
+			{
+				DebugHelpers->LogVerbose(FString::Printf( TEXT("  Spawned middle1 mesh at edge %d, cell %d (instance %d)"), 
+				(int32)PlacedWall.Edge, PlacedWall.StartCell, InstanceIndex));
+			}
 		}
 	}
 
-	// ========================================================================
 	// SPAWN MIDDLE2 MESH (Optional - Second Middle Layer)
-	// ========================================================================
-	if (!PlacedWall.WallModule.MiddleMesh2.IsNull())
+	if (!PlacedWall.WallModule. MiddleMesh2.IsNull())
 	{
-		if (UInstancedStaticMeshComponent* Middle2ISM = GetOrCreateWallISM(PlacedWall.WallModule.MiddleMesh2))
-		{
-			FTransform WorldTransform = PlacedWall.Middle2Transform;
-			WorldTransform.SetLocation(RoomOrigin + PlacedWall.Middle2Transform.GetLocation());
-			Middle2ISM->AddInstance(WorldTransform);
+		UInstancedStaticMeshComponent* Middle2ISM = UDungeonSpawnerHelpers::GetOrCreateISMComponent( this,
+		PlacedWall.WallModule.MiddleMesh2, WallMeshComponents, TEXT("WallISM_"), true);
 
-			DebugHelpers->LogVerbose(FString:: Printf(TEXT("  Spawned middle2 mesh at edge %d, cell %d"), 
-				(int32)PlacedWall.Edge, PlacedWall.StartCell));
+		if (Middle2ISM)
+		{
+			int32 InstanceIndex = UDungeonSpawnerHelpers::SpawnMeshInstance( Middle2ISM, PlacedWall.Middle2Transform, RoomOrigin);
+
+			if (InstanceIndex >= 0)
+			{
+				DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawned middle2 mesh at edge %d, cell %d (instance %d)"), 
+				(int32)PlacedWall.Edge, PlacedWall. StartCell, InstanceIndex));
+			}
 		}
 	}
-
-	// ========================================================================
+	
 	// SPAWN TOP MESH (Optional - Top Layer/Cap)
-	// ========================================================================
 	if (!PlacedWall.WallModule.TopMesh.IsNull())
 	{
-		if (UInstancedStaticMeshComponent* TopISM = GetOrCreateWallISM(PlacedWall.WallModule.TopMesh))
-		{
-			FTransform WorldTransform = PlacedWall. TopTransform;
-			WorldTransform.SetLocation(RoomOrigin + PlacedWall. TopTransform.GetLocation());
-			TopISM->AddInstance(WorldTransform);
+		UInstancedStaticMeshComponent* TopISM = UDungeonSpawnerHelpers:: GetOrCreateISMComponent( this,
+		PlacedWall.WallModule.TopMesh, WallMeshComponents, TEXT("WallISM_"), true);
 
-			DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawned top mesh at edge %d, cell %d"), 
-				(int32)PlacedWall.Edge, PlacedWall.StartCell));
+		if (TopISM)
+		{
+			int32 InstanceIndex = UDungeonSpawnerHelpers::SpawnMeshInstance( TopISM, PlacedWall.TopTransform, RoomOrigin);
+
+			if (InstanceIndex >= 0)
+			{
+				DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawned top mesh at edge %d, cell %d (instance %d)"), 
+				(int32)PlacedWall.Edge, PlacedWall.StartCell, InstanceIndex));
+			}
 		}
 	}
 }
@@ -580,7 +504,6 @@ void ARoomSpawner::LogFloorStatistics()
 #pragma endregion
 #endif // WITH_EDITOR
 
-
 bool ARoomSpawner::InitializeGenerator()
 {
 	// Create generator if it doesn't exist
@@ -602,7 +525,6 @@ void ARoomSpawner::UpdateVisualization()
 	FIntPoint GridSize = RoomGenerator->GetGridSize();
 	float CellSize = RoomGenerator->GetCellSize();
 	const TArray<EGridCellType>& GridState = RoomGenerator->GetGridState();
-
 	DebugHelpers->DrawGrid(GridSize, GridState, CellSize, RoomOrigin);
 
 	// Draw forced empty regions (if any)
@@ -616,6 +538,5 @@ void ARoomSpawner::UpdateVisualization()
 	{
 		DebugHelpers->DrawForcedEmptyCells(RoomData->ForcedEmptyFloorCells, GridSize, CellSize, RoomOrigin);
 	}
-
 	DebugHelpers->LogVerbose(TEXT("Visualization updated."));
 }

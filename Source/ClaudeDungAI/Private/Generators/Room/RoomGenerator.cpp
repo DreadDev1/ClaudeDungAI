@@ -3,6 +3,7 @@
 #include "Generators/Room/RoomGenerator.h"
 #include "Utilities/Helpers/DungeonGenerationHelpers.h" 
 #include "Data/Grid/GridData.h"
+#include "Data/Room/FloorData.h"
 #include "Data/Room/WallData.h"
 
 bool URoomGenerator::Initialize(URoomData* InRoomData)
