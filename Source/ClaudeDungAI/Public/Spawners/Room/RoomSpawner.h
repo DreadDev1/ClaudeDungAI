@@ -61,6 +61,22 @@ public:
 	/* Refresh visualization (useful after changing debug settings) */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void RefreshVisualization();
+	
+	/** Generate wall meshes based on RoomData WallData */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void GenerateWallMeshes();
+
+	/* Clear all spawned wall meshes */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void ClearWallMeshes();
+	
+	/** Generate corner meshes for all 4 corners */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void GenerateCornerMeshes();
+
+	/* Clear all spawned corner meshes */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void ClearCornerMeshes();
 
 #pragma region Debug Functions
 #pragma region Grid Coordinate Text Rendering
@@ -92,14 +108,6 @@ public:
 	/* Check if room is generated */
 	bool IsRoomGenerated() const { return bIsGenerated; }
 
-	/** Generate wall meshes based on RoomData WallData */
-	UFUNCTION(CallInEditor, Category = "Room Generation")
-	void GenerateWallMeshes();
-
-	/* Clear all spawned wall meshes */
-	UFUNCTION(CallInEditor, Category = "Room Generation")
-	void ClearWallMeshes();
-
 private:
 
 	// Room generator instance (logic layer)
@@ -118,6 +126,10 @@ private:
 
 	// Track spawned wall mesh instances
 	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> WallMeshComponents;
+	
+	// Track spawned corner mesh instances
+	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> CornerMeshComponents;
+	
 	// Helper functions
 	void SpawnWallSegment(const FPlacedWallInfo& PlacedWall, const FVector& RoomOrigin);
 	

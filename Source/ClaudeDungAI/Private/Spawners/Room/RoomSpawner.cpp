@@ -110,6 +110,9 @@ void ARoomSpawner::ClearRoomGrid()
 	
 	// Clear wall meshes
 	ClearWallMeshes();
+	
+	// Clear corner meshes
+	ClearCornerMeshes();
 
 	// Clear the grid
 	RoomGenerator->ClearGrid();
@@ -318,6 +321,95 @@ void ARoomSpawner::ClearWallMeshes()
 	// Clear generator data
 	if (RoomGenerator) { RoomGenerator->ClearPlacedWalls();	}
 	DebugHelpers->LogImportant(TEXT("Wall meshes cleared"));
+}
+
+void ARoomSpawner::GenerateCornerMeshes()
+{
+	 DebugHelpers->LogSectionHeader(TEXT("GENERATE CORNER MESHES"));
+
+    if (!EnsureGeneratorReady())
+    {
+        DebugHelpers->LogCritical(TEXT("Failed to initialize generator!"));
+        DebugHelpers->LogSectionHeader(TEXT("GENERATE CORNER MESHES"));
+        return;
+    }
+
+    // Clear existing corners
+    ClearCornerMeshes();
+
+    // Generate corner layout (logic only)
+    DebugHelpers->LogImportant(TEXT("Generating corner layout..."));
+    if (!RoomGenerator->GenerateCorners())
+    {
+        DebugHelpers->LogCritical(TEXT("Corner generation failed!"));
+        DebugHelpers->LogSectionHeader(TEXT("GENERATE CORNER MESHES"));
+        return;
+    }
+
+    // Get placed corners and spawn
+    const TArray<FPlacedCornerInfo>& PlacedCorners = RoomGenerator->GetPlacedCorners();
+    
+    if (PlacedCorners.Num() == 0)
+    {
+        DebugHelpers->LogImportant(TEXT("No corners to spawn (no corner mesh assigned)"));
+        DebugHelpers->LogSectionHeader(TEXT("GENERATE CORNER MESHES"));
+        return;
+    }
+
+    DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d corner pieces..."), PlacedCorners.Num()));
+
+    // Get room origin for world space conversion
+    FVector RoomOrigin = GetActorLocation();
+
+    // Spawn corner meshes
+    for (const FPlacedCornerInfo& PlacedCorner : PlacedCorners)
+    {
+        // Get or create ISM component for corner mesh
+        UInstancedStaticMeshComponent* ISM = UDungeonSpawnerHelpers::GetOrCreateISMComponent(
+            this,
+            PlacedCorner. CornerMesh,
+            CornerMeshComponents,
+            TEXT("CornerISM_"),
+            true
+        );
+
+        if (ISM)
+        {
+            int32 InstanceIndex = UDungeonSpawnerHelpers::SpawnMeshInstance(
+                ISM,
+                PlacedCorner. Transform,
+                RoomOrigin
+            );
+
+            if (InstanceIndex >= 0)
+            {
+                DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawned %s corner (instance %d)"),
+                    *UEnum::GetValueAsString(PlacedCorner.Corner), InstanceIndex));
+            }
+            else
+            {
+                DebugHelpers->LogVerbose(FString::Printf(TEXT("  Failed to spawn %s corner"),
+                    *UEnum::GetValueAsString(PlacedCorner. Corner)));
+            }
+        }
+    }
+
+    DebugHelpers->LogImportant(TEXT("Corner meshes generated successfully!"));
+    DebugHelpers->LogSectionHeader(TEXT("GENERATE CORNER MESHES"));
+}
+
+void ARoomSpawner::ClearCornerMeshes()
+{
+	// Clear all corner ISM components
+	UDungeonSpawnerHelpers::ClearISMComponentMap(CornerMeshComponents);
+
+	// Clear generator data
+	if (RoomGenerator)
+	{
+		RoomGenerator->ClearPlacedCorners();
+	}
+
+	DebugHelpers->LogImportant(TEXT("Corner meshes cleared"));
 }
 
 void ARoomSpawner::RefreshVisualization()

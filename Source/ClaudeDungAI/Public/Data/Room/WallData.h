@@ -6,16 +6,14 @@
 #include "Engine/DataAsset.h"
 #include "WallData.generated.h"
 
-
 struct FWallModule;
 
 UCLASS()
 class CLAUDEDUNGAI_API UWallData : public UDataAsset
 {
 	GENERATED_BODY()
-
 	
-	public:
+public:
 	// The collection of all available wall modules (Base/Middle/Top components)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Wall Modules")
 	TArray<FWallModule> AvailableWallModules;
@@ -24,10 +22,7 @@ class CLAUDEDUNGAI_API UWallData : public UDataAsset
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Wall Defaults")
 	TSoftObjectPtr<UStaticMesh> DefaultCornerMesh; 
 	
-	// Per-corner position offsets (clockwise from bottom-left)
-	// Allows independent adjustment of each corner based on mesh pivot/size
-	// Example: For 200x200 corner with center pivot, use offset (-100, -100, 0)
-	
+	// Per-corner position offsets (clockwise from bottom-left)	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Corner Position Adjustments")
 	FVector SouthWestCornerOffset = FVector::ZeroVector;  // Corner at (0, 0)
 	

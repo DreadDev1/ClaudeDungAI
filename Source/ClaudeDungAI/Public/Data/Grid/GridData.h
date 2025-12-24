@@ -27,8 +27,7 @@ enum class EGridCellType : uint8
 	ECT_Doorway 	UMETA(DisplayName = "Doorway Slot")
 };
 
-// Defines the four edges of a room for wall placement
-// Coordinate System: +X = North (Player Forward), +Y = East, -X = South, -Y = West
+// Defines Coordinate System: +X = North (Player Forward), +Y = East, -X = South, -Y = West
 UENUM(BlueprintType)
 enum class EWallEdge : uint8
 {
@@ -39,9 +38,17 @@ enum class EWallEdge : uint8
 	West 	UMETA(DisplayName = "West (-Y)")
 };
 
-// --- Mesh Placement Info (Used by Floor and Interior Meshes) ---
+/* Corner positions in room (clockwise from bottom-left) */
+UENUM(BlueprintType)
+enum class ECornerPosition : uint8
+{
+	SouthWest = 0  UMETA(DisplayName = "Southwest (Bottom-Left)"),
+	SouthEast = 1  UMETA(DisplayName = "Southeast (Bottom-Right)"),
+	NorthEast = 2  UMETA(DisplayName = "Northeast (Top-Right)"),
+	NorthWest = 3  UMETA(DisplayName = "Northwest (Top-Left)")
+};
 
-// Struct for interior mesh definitions (e.g., clutter, furniture)
+// --- Mesh Placement Info (Used by Floor and Interior Meshes) ---
 USTRUCT(BlueprintType)
 struct FMeshPlacementInfo
 {
@@ -110,6 +117,29 @@ struct FWallModule
 	// Placement weight (NEW: Clamped between 0.0 and 10.0)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Wall Info", meta=(ClampMin="0.0", ClampMax="10.0", UIMin="0.0", UIMax="10.0"))
 	float PlacementWeight = 1.0f;
+};
+
+/* Tracks a placed corner piece (single mesh, no stacking) */
+USTRUCT(BlueprintType)
+struct FPlacedCornerInfo
+{
+	GENERATED_BODY()
+
+	// Corner position
+	UPROPERTY()
+	ECornerPosition Corner;
+
+	// Corner mesh used
+	UPROPERTY()
+	TSoftObjectPtr<UStaticMesh> CornerMesh;
+
+	// Corner transform (local/component space, relative to room origin)
+	UPROPERTY()
+	FTransform Transform;
+
+	FPlacedCornerInfo()
+		: Corner(ECornerPosition:: SouthWest)
+	{}
 };
 
 // --- Forced Wall Placement (Designer Override System) ---

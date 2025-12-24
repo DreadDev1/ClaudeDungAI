@@ -146,6 +146,19 @@ public:
 
 #pragma endregion
 	
+#pragma region Corner Generation
+
+	/* Generate corner pieces for all 4 corners */
+	bool GenerateCorners();
+
+	/* Get list of placed corners */
+	const TArray<FPlacedCornerInfo>& GetPlacedCorners() const { return PlacedCorners; }
+
+	/* Clear all placed corners */
+	void ClearPlacedCorners();
+
+#pragma endregion
+	
 #pragma region Coordinate Conversion
 	/* Convert grid coordinates to local position (center of cell) */
 	FVector GridToLocalPosition(FIntPoint GridCoord) const;
@@ -206,6 +219,11 @@ private:
 	// Tracked base wall segments for Middle/Top spawning
 	UPROPERTY()
 	TArray<FGeneratorWallSegment> PlacedBaseWallSegments;
+	
+	// Placed corners
+	UPROPERTY()
+	TArray<FPlacedCornerInfo> PlacedCorners;
+	
 	
 #pragma endregion
 
