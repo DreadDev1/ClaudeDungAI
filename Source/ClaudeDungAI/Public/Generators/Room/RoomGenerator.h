@@ -60,7 +60,7 @@ class CLAUDEDUNGAI_API URoomGenerator : public UObject
 
 public:
 	/* Initialize the room generator with room data */
-	bool Initialize(URoomData* InRoomData);
+	bool Initialize(URoomData* InRoomData, FIntPoint InGridSize);
 
 #pragma region Room Grid Management
 

@@ -6,7 +6,7 @@
 #include "Data/Room/FloorData.h"
 #include "Data/Room/WallData.h"
 
-bool URoomGenerator::Initialize(URoomData* InRoomData)
+bool URoomGenerator::Initialize(URoomData* InRoomData, FIntPoint InGridSize)
 {
 	if (!InRoomData)
 	{
@@ -15,7 +15,7 @@ bool URoomGenerator::Initialize(URoomData* InRoomData)
 	}
 
 	RoomData = InRoomData;
-	GridSize = RoomData->GridSize;
+	GridSize = InGridSize;
 	CellSize = CELL_SIZE;
 	bIsInitialized = true;
 

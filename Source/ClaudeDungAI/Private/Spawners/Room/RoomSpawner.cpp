@@ -35,6 +35,9 @@ bool ARoomSpawner::EnsureGeneratorReady()
 	if (!RoomData) 
 	{ DebugHelpers->LogCritical(TEXT("RoomData is not assigned!")); return false;}
 
+	if (RoomGridSize. X < 4 || RoomGridSize.Y < 4)
+	{ DebugHelpers->LogCritical(TEXT("GridSize is too small (min 5x5)!")); return false;}
+	
 	// Create RoomGenerator if needed
 	if (!RoomGenerator)
 	{
@@ -48,8 +51,8 @@ bool ARoomSpawner::EnsureGeneratorReady()
 	if (!RoomGenerator->IsInitialized())
 	{
 		DebugHelpers->LogVerbose(TEXT("Initializing RoomGenerator..."));
-		if (!RoomGenerator->Initialize(RoomData))
-		{ DebugHelpers->LogCritical(TEXT("Failed to initialize RoomGenerator!")); return false; }
+		if (!RoomGenerator->Initialize(RoomData, RoomGridSize))
+		{ DebugHelpers->LogCritical(TEXT("Failed to initialize RoomGenerator!")); return false;}
 
 		DebugHelpers->LogVerbose(TEXT("Creating grid cells..."));
 		RoomGenerator->CreateGrid();

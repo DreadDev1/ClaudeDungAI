@@ -21,10 +21,6 @@ class CLAUDEDUNGAI_API URoomData : public UDataAsset
 
 public:
 	// --- General Dungeon Layout Parameters ---
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Layout")
-	FIntPoint GridSize = FIntPoint(10, 10); // Room size in 100cm cells (e.g., 10x10 meters)
-
 	// --- Style Data Asset References (Designer Swaps) ---
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Styles")

@@ -37,6 +37,9 @@ public:
 	// Room configuration data asset
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Room Configuration")
 	URoomData* RoomData;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Room Configuration", meta = (ClampMin = "4", ClampMax = "50"))
+	FIntPoint RoomGridSize = FIntPoint(10, 10);
 #pragma endregion
 
 #pragma region Editor Functions
@@ -113,7 +116,6 @@ private:
 	// Room generator instance (logic layer)
 	UPROPERTY()
 	URoomGenerator* RoomGenerator;
-
 	
 	// Flag to track if room is generated
 	bool bIsGenerated;
