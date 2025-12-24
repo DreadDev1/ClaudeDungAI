@@ -80,6 +80,14 @@ public:
 	/* Clear all spawned corner meshes */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void ClearCornerMeshes();
+	/** Generate doorway meshes (frames only, actors later) */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void GenerateDoorwayMeshes();
+
+	/** Clear all spawned doorway meshes */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void ClearDoorwayMeshes();
+	
 
 #pragma region Debug Functions
 #pragma region Grid Coordinate Text Rendering
@@ -124,13 +132,20 @@ private:
 	bool EnsureGeneratorReady();
 	
 	// Track spawned floor mesh instances
+	UPROPERTY()
 	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> FloorMeshComponents;
 
 	// Track spawned wall mesh instances
+	UPROPERTY()
 	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> WallMeshComponents;
 	
 	// Track spawned corner mesh instances
+	UPROPERTY()
 	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> CornerMeshComponents;
+	
+	// Track spawned doorway frame mesh instances
+	UPROPERTY()
+	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> DoorwayMeshComponents;
 	
 	// Helper functions
 	void SpawnWallSegment(const FPlacedWallInfo& PlacedWall, const FVector& RoomOrigin);

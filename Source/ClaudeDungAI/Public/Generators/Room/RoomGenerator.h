@@ -59,20 +59,20 @@ class CLAUDEDUNGAI_API URoomGenerator : public UObject
 	GENERATED_BODY()
 
 public:
+#pragma region Initialization
 	/* Initialize the room generator with room data */
 	bool Initialize(URoomData* InRoomData, FIntPoint InGridSize);
-
+	UFUNCTION(BlueprintPure, Category = "Room Generator")
+	bool IsInitialized() const { return bIsInitialized; }
+#pragma endregion
+	
 #pragma region Room Grid Management
-
 	UFUNCTION(BlueprintCallable, Category = "Room Generator")
 	void CreateGrid();
 	UFUNCTION(BlueprintCallable, Category = "Room Generator")
 	void ClearGrid();
 	UFUNCTION(BlueprintCallable, Category = "Room Generator")
 	void ResetGridCellStates();
-	UFUNCTION(BlueprintPure, Category = "Room Generator")
-	bool IsInitialized() const { return bIsInitialized; }
-	
 	const TArray<EGridCellType>& GetGridState() const { return GridState; }
 	FIntPoint GetGridSize() const { return GridSize; }
 	float GetCellSize() const { return CellSize; }
@@ -81,16 +81,12 @@ public:
 	bool IsValidGridCoordinate(FIntPoint GridCoord) const;
 	bool IsAreaAvailable(FIntPoint StartCoord, FIntPoint Size) const;
 
-	/* Mark a rectangular area as occupied
-	 * @param StartCoord - Top-left corner of area @param Size - Size of area in cells (X, Y)
-	 * @param CellType - Type to mark cells as @return True if successful */
+	/** Mark a rectangular area as occupied 
+	 * @param StartCoord - Top-left corner of area @param Size - Size in cells (X, Y) @param CellType */
 	bool MarkArea(FIntPoint StartCoord, FIntPoint Size, EGridCellType CellType);
 
-	/*Clear a rectangular area (set to Empty) 
-	 * @param StartCoord - Top-left corner of area @param Size - Size of area in cells (X, Y)
-	 * @return True if successful*/
+	/** Clear a rectangular area (set to Empty) * @param StartCoord - Top-left corner of area @param Size - Size of area in cells (X, Y) */
 	bool ClearArea(FIntPoint StartCoord, FIntPoint Size);
-	
 #pragma endregion
 	
 #pragma region Floor Generation
@@ -129,7 +125,7 @@ public:
 	bool GenerateWalls();
 
 	/* Get list of placed walls */
-	const TArray<FPlacedWallInfo>& GetPlacedWalls() const { return PlacedWalls; }
+	const TArray<FPlacedWallInfo>& GetPlacedWalls() const { return PlacedWallMeshes; }
 
 	int32 ExecuteForcedWallPlacements();
 
@@ -152,10 +148,29 @@ public:
 	bool GenerateCorners();
 
 	/* Get list of placed corners */
-	const TArray<FPlacedCornerInfo>& GetPlacedCorners() const { return PlacedCorners; }
+	const TArray<FPlacedCornerInfo>& GetPlacedCorners() const { return PlacedCornerMeshes; }
 
 	/* Clear all placed corners */
 	void ClearPlacedCorners();
+
+#pragma endregion
+	
+#pragma region Doorway Generation
+
+	/* Generate doorways (manual + automatic standard doorway) */
+	bool GenerateDoorways();
+
+	/* Mark doorway cells as occupied (called before wall generation) */
+	void MarkDoorwayCells();
+
+	/* Check if a cell is part of any doorway */
+	bool IsCellPartOfDoorway(FIntPoint Cell) const;
+
+	/* Get list of placed doorways */
+	const TArray<FPlacedDoorwayInfo>& GetPlacedDoorways() const { return PlacedDoorwayMeshes; }
+
+	/* Clear all placed doorways */
+	void ClearPlacedDoorways();
 
 #pragma endregion
 	
@@ -188,11 +203,7 @@ private:
 	// Reference to room configuration data
 	UPROPERTY()
 	URoomData* RoomData;
-
-	// Grid state array (row-major order:  Index = Y * GridSize.X + X)
-	UPROPERTY()
-	TArray<EGridCellType> GridState;
-
+	
 	// Grid dimensions in cells
 	FIntPoint GridSize;
 
@@ -202,27 +213,36 @@ private:
 	// Initialization flag
 	bool bIsInitialized;
 	
+	// Grid state array (row-major order: Index = Y * GridSize.X + X)
+	UPROPERTY()
+	TArray<EGridCellType> GridState;
+	
 	// Placed floor meshes
 	UPROPERTY()
 	TArray<FPlacedMeshInfo> PlacedFloorMeshes;
 
+	// Placed walls
+	UPROPERTY()
+	TArray<FPlacedWallInfo> PlacedWallMeshes;
+	// Placed corners
+	UPROPERTY()
+	TArray<FPlacedCornerInfo> PlacedCornerMeshes;
+	
+	// ✅ NEW: Placed doorways
+	UPROPERTY()
+	TArray<FPlacedDoorwayInfo> PlacedDoorwayMeshes;
+	
 	// Statistics tracking
 	int32 LargeTilesPlaced;
 	int32 MediumTilesPlaced;
 	int32 SmallTilesPlaced;
 	int32 FillerTilesPlaced;
 
-	// Placed walls
-	UPROPERTY()
-	TArray<FPlacedWallInfo> PlacedWalls;
+
 
 	// Tracked base wall segments for Middle/Top spawning
 	UPROPERTY()
 	TArray<FGeneratorWallSegment> PlacedBaseWallSegments;
-	
-	// Placed corners
-	UPROPERTY()
-	TArray<FPlacedCornerInfo> PlacedCorners;
 	
 	
 #pragma endregion

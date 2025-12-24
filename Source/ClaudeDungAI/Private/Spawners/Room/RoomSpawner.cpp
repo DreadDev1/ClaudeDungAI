@@ -26,9 +26,6 @@ ARoomSpawner::ARoomSpawner()
 	// Initialize flags
 	bIsGenerated = false;
 }
-
-#if WITH_EDITOR
-#pragma region In Editor Functions
 bool ARoomSpawner::EnsureGeneratorReady()
 {
 	// Validate RoomData
@@ -60,6 +57,10 @@ bool ARoomSpawner::EnsureGeneratorReady()
 	return true;
 }
 
+#if WITH_EDITOR
+#pragma region In Editor Functions
+
+#pragma region Floor Generation
 void ARoomSpawner::GenerateRoomGrid()
 {
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE ROOM GRID"));
@@ -116,6 +117,15 @@ void ARoomSpawner::ClearRoomGrid()
 	
 	// Clear corner meshes
 	ClearCornerMeshes();
+	
+	//Clear doorway meshes
+	ClearDoorwayMeshes();
+	
+	// ✅ NEW: Clear doorway LAYOUT (not just meshes)
+	if (RoomGenerator)
+	{
+		RoomGenerator->ClearPlacedDoorways();
+	}
 
 	// Clear the grid
 	RoomGenerator->ClearGrid();
@@ -205,7 +215,9 @@ void ARoomSpawner::ClearFloorMeshes()
 	}
 	DebugHelpers->LogImportant(TEXT("Floor meshes cleared"));
 }
+#pragma endregion
 
+#pragma region Wall Generation
 void ARoomSpawner::GenerateWallMeshes()
 {
 	DebugHelpers->LogSectionHeader(TEXT("GENERATE WALL MESHES"));
@@ -325,7 +337,9 @@ void ARoomSpawner::ClearWallMeshes()
 	if (RoomGenerator) { RoomGenerator->ClearPlacedWalls();	}
 	DebugHelpers->LogImportant(TEXT("Wall meshes cleared"));
 }
+#pragma endregion
 
+#pragma region Corner Generation
 void ARoomSpawner::GenerateCornerMeshes()
 {
 	 DebugHelpers->LogSectionHeader(TEXT("GENERATE CORNER MESHES"));
@@ -414,6 +428,144 @@ void ARoomSpawner::ClearCornerMeshes()
 
 	DebugHelpers->LogImportant(TEXT("Corner meshes cleared"));
 }
+#pragma endregion
+
+#pragma region Doorway Generation
+void ARoomSpawner::GenerateDoorwayMeshes()
+{
+    DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
+
+    if (! EnsureGeneratorReady())
+    {
+        DebugHelpers->LogCritical(TEXT("Failed to initialize generator!"));
+        DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
+        return;
+    }
+
+    // Clear existing doorway MESHES (but keep doorway LAYOUT)
+    ClearDoorwayMeshes();
+
+    // ✅ CHANGED: Check if doorways already exist from wall generation
+    const TArray<FPlacedDoorwayInfo>& PlacedDoorways = RoomGenerator->GetPlacedDoorways();
+    
+    if (PlacedDoorways. Num() == 0)
+    {
+        // No doorways exist yet - generate them now
+        DebugHelpers->LogImportant(TEXT("No existing doorways found - generating layout... "));
+        
+        if (!RoomGenerator->GenerateDoorways())
+        {
+            DebugHelpers->LogCritical(TEXT("Doorway generation failed!"));
+            DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
+            return;
+        }
+        
+        // Get the newly generated doorways
+        const TArray<FPlacedDoorwayInfo>& NewDoorways = RoomGenerator->GetPlacedDoorways();
+        
+        if (NewDoorways.Num() == 0)
+        {
+            DebugHelpers->LogImportant(TEXT("No doorways to spawn (none configured)"));
+            DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
+            return;
+        }
+    }
+    else
+    {
+        // ✅ Doorways already exist from wall generation - reuse them! 
+        DebugHelpers->LogImportant(FString::Printf(TEXT("Using existing doorway layout (%d doorways)"), 
+            PlacedDoorways.Num()));
+    }
+
+    // Now spawn the doorway meshes using the existing layout
+    const TArray<FPlacedDoorwayInfo>& FinalDoorways = RoomGenerator->GetPlacedDoorways();
+    
+    DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d doorway frames... "), FinalDoorways.Num()));
+
+    // Get room origin for world space conversion
+    FVector RoomOrigin = GetActorLocation();
+
+    int32 FramesSpawned = 0;
+    int32 FramesSkipped = 0;
+
+    // Spawn doorway frame meshes
+    for (const FPlacedDoorwayInfo& PlacedDoor : FinalDoorways)
+    {
+        // Validate door data
+        if (!PlacedDoor.DoorData)
+        {
+            DebugHelpers->LogVerbose(TEXT("  Doorway has null DoorData - skipping"));
+            FramesSkipped++;
+            continue;
+        }
+
+        // Load frame mesh
+        UStaticMesh* FrameMesh = PlacedDoor.DoorData->FrameSideMesh.LoadSynchronous();
+        if (!FrameMesh)
+        {
+            DebugHelpers->LogVerbose(FString::Printf(TEXT("  Doorway at edge %s has no frame mesh - skipping"),
+                *UEnum::GetValueAsString(PlacedDoor.Edge)));
+            FramesSkipped++;
+            continue;
+        }
+
+        // Get or create ISM component for door frame mesh
+        UInstancedStaticMeshComponent* ISM = UDungeonSpawnerHelpers::GetOrCreateISMComponent(
+            this,
+            PlacedDoor. DoorData->FrameSideMesh,
+            DoorwayMeshComponents,
+            TEXT("DoorFrameISM_"),
+            true
+        );
+
+        if (ISM)
+        {
+            // Spawn frame instance
+            int32 InstanceIndex = UDungeonSpawnerHelpers::SpawnMeshInstance(
+                ISM,
+                PlacedDoor. FrameTransform,
+                RoomOrigin
+            );
+
+            if (InstanceIndex >= 0)
+            {
+                FramesSpawned++;
+                
+                FString DoorType = PlacedDoor.bIsStandardDoorway ? TEXT("Standard") : TEXT("Manual");
+                DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawned %s doorway frame on edge %s (instance %d)"),
+                    *DoorType, *UEnum::GetValueAsString(PlacedDoor.Edge), InstanceIndex));
+            }
+            else
+            {
+                DebugHelpers->LogVerbose(FString::Printf(TEXT("  Failed to spawn doorway frame on edge %s"),
+                    *UEnum::GetValueAsString(PlacedDoor. Edge)));
+                FramesSkipped++;
+            }
+        }
+        else
+        {
+            DebugHelpers->LogVerbose(TEXT("  Failed to create ISM component for doorway"));
+            FramesSkipped++;
+        }
+    }
+
+    DebugHelpers->LogImportant(FString::Printf(TEXT("Doorway spawning complete:  %d frames spawned, %d skipped"),
+        FramesSpawned, FramesSkipped));
+    DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
+}
+
+void ARoomSpawner::ClearDoorwayMeshes()
+{
+	// Clear all doorway ISM components (mesh instances)
+	UDungeonSpawnerHelpers::ClearISMComponentMap(DoorwayMeshComponents);
+
+	// ✅ CHANGED: Do NOT clear generator doorway data
+	// The doorway layout should persist until ClearRoomGrid() is called
+	// This allows doorway meshes to be respawned without regenerating layout
+
+	DebugHelpers->LogImportant(TEXT("Doorway meshes cleared (layout preserved)"));
+}
+#pragma endregion
 
 void ARoomSpawner::RefreshVisualization()
 {

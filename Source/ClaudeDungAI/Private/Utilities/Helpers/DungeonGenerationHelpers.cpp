@@ -8,36 +8,36 @@
 // GRID & CELL OPERATIONS
 // ========================================================================
 
-TArray<int32> UDungeonGenerationHelpers::GetEdgeCellIndices(EWallEdge Edge, FIntPoint GridSize)
+TArray<FIntPoint> UDungeonGenerationHelpers::GetEdgeCellIndices(EWallEdge Edge, FIntPoint GridSize)
 {
-	TArray<int32> Cells;
+	TArray<FIntPoint> Cells;
 
 	switch (Edge)
 	{
-		case EWallEdge::North:  // +X edge
-			for (int32 Y = 0; Y < GridSize.Y; ++Y)
-				Cells.Add(Y);
-			break;
-
-		case EWallEdge:: South:  // -X edge
-			for (int32 Y = 0; Y < GridSize. Y; ++Y)
-				Cells.Add(Y);
-			break;
-
-		case EWallEdge::East:    // +Y edge
-			for (int32 X = 0; X < GridSize.X; ++X)
-				Cells.Add(X);
-			break;
-
-		case EWallEdge:: West:   // -Y edge
-			for (int32 X = 0; X < GridSize. X; ++X)
-				Cells.Add(X);
-			break;
-
-		default:
-			break;
+	case EWallEdge::North:   // North = +X direction, X = GridSize (beyond max)
+		for (int32 Y = 0; Y < GridSize.Y; ++Y)
+			Cells.Add(FIntPoint(GridSize.X, Y));
+		break;
+        
+	case EWallEdge:: South:  // South = -X direction, X = -1 (before min)
+		for (int32 Y = 0; Y < GridSize.Y; ++Y)
+			Cells.Add(FIntPoint(-1, Y));
+		break;
+        
+	case EWallEdge::East:   // East = +Y direction, Y = GridSize (beyond max)
+		for (int32 X = 0; X < GridSize.X; ++X)
+			Cells.Add(FIntPoint(X, GridSize.Y));
+		break;
+        
+	case EWallEdge:: West:   // West = -Y direction, Y = -1 (before min)
+		for (int32 X = 0; X < GridSize.X; ++X)
+			Cells.Add(FIntPoint(X, -1));
+		break;
+            
+	default: 
+		break;
 	}
-
+    
 	return Cells;
 }
 
@@ -166,6 +166,44 @@ FVector UDungeonGenerationHelpers::CalculateWallPosition(
 			break;
 	}
 
+	return Position;
+}
+
+FVector UDungeonGenerationHelpers::CalculateDoorwayPosition(EWallEdge Edge, int32 StartCell, 
+int32 WidthInCells,	FIntPoint GridSize, float CellSize)
+{
+	// Calculate center of doorway span
+	float DoorwayCenter = (StartCell + WidthInCells / 2.0f) * CellSize;
+    
+	FVector Position;
+    
+	switch (Edge)
+	{
+	case EWallEdge::North:
+		// North edge: X = GridSize (boundary), Y varies
+		Position = FVector(GridSize.X * CellSize, DoorwayCenter, 0.0f);
+		break;
+            
+	case EWallEdge::South:
+		// South edge: X = 0 (boundary), Y varies
+		Position = FVector(0.0f, DoorwayCenter, 0.0f);
+		break;
+            
+	case EWallEdge::East:
+		// East edge: X varies, Y = GridSize (boundary)
+		Position = FVector(DoorwayCenter, GridSize.Y * CellSize, 0.0f);
+		break;
+            
+	case EWallEdge::West:
+		// West edge: X varies, Y = 0 (boundary)
+		Position = FVector(DoorwayCenter, 0.0f, 0.0f);
+		break;
+            
+	default:
+		Position = FVector::ZeroVector;
+		break;
+	}
+    
 	return Position;
 }
 

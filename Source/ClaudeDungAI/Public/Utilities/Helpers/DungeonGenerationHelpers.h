@@ -30,7 +30,8 @@ class CLAUDEDUNGAI_API UDungeonGenerationHelpers : public UBlueprintFunctionLibr
 	 * @return Array of cell indices along that edge
 	 */
 	UFUNCTION(BlueprintPure, Category = "Dungeon Generation|Grid")
-	static TArray<int32> GetEdgeCellIndices(EWallEdge Edge, FIntPoint GridSize);
+	static TArray<FIntPoint> GetEdgeCellIndices(EWallEdge Edge, FIntPoint GridSize);
+	
 
 	/**
 	 * Check if a coordinate is within grid bounds
@@ -106,17 +107,14 @@ class CLAUDEDUNGAI_API UDungeonGenerationHelpers : public UBlueprintFunctionLibr
 	 * @return World position for the wall
 	 */
 	UFUNCTION(BlueprintPure, Category = "Dungeon Generation|Walls")
-	static FVector CalculateWallPosition(
-		EWallEdge Edge,
-		int32 StartCell,
-		int32 SpanLength,
-		FIntPoint GridSize,
-		float CellSize,
-		float NorthOffset,
-		float SouthOffset,
-		float EastOffset,
-		float WestOffset);
+	static FVector CalculateWallPosition( EWallEdge Edge, int32 StartCell, int32 SpanLength, FIntPoint GridSize, float CellSize,
+	float NorthOffset, float SouthOffset, float EastOffset, float WestOffset);
 
+	/* Calculate doorway center position (for frame/actor placement) */
+	UFUNCTION(BlueprintPure, Category = "Dungeon Generation|Doorways")
+	static FVector CalculateDoorwayPosition(EWallEdge Edge, int32 StartCell, 
+	int32 WidthInCells, FIntPoint GridSize, float CellSize);
+	
 	// ========================================================================
 	// MESH OPERATIONS
 	// ========================================================================

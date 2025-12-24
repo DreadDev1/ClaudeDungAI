@@ -247,3 +247,45 @@ struct FFixedDoorLocation
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door Placement")
 	FDoorPositionOffsets DoorPositionOffsets;
 };
+
+USTRUCT(BlueprintType)
+struct FPlacedDoorwayInfo
+{
+	GENERATED_BODY()
+
+	// Which edge the doorway is on
+	UPROPERTY()
+	EWallEdge Edge = EWallEdge::North;
+
+	// Starting cell on the edge
+	UPROPERTY()
+	int32 StartCell = 0;
+
+	// Width in cells (from DoorData->FrameFootprintY)
+	UPROPERTY()
+	int32 WidthInCells = 4;
+
+	// Door data used
+	UPROPERTY()
+	UDoorData* DoorData = nullptr;
+
+	// Frame transform (local/component space)
+	UPROPERTY()
+	FTransform FrameTransform;
+
+	// Actor spawn transform (local/component space - for future door actors)
+	UPROPERTY()
+	FTransform ActorTransform;
+
+	// Whether this is an auto-generated standard doorway
+	UPROPERTY()
+	bool bIsStandardDoorway = false;
+
+	FPlacedDoorwayInfo()
+		: Edge(EWallEdge::North)
+		, StartCell(0)
+		, WidthInCells(4)
+		, DoorData(nullptr)
+		, bIsStandardDoorway(false)
+	{}
+};

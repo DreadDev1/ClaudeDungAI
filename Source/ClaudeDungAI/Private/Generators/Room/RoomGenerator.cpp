@@ -50,7 +50,7 @@ void URoomGenerator:: ClearGrid()
 {
 	GridState.Empty();
 	PlacedFloorMeshes. Empty();
-	PlacedWalls.Empty();
+	PlacedWallMeshes.Empty();
 	PlacedBaseWallSegments.Empty();
 
 	// Reset statistics
@@ -513,14 +513,18 @@ void URoomGenerator::MarkForcedEmptyCells(const TArray<FIntPoint>& EmptyCells)
 bool URoomGenerator::GenerateWalls()
 {
 	if (!bIsInitialized)
-	{ UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - Generator not initialized! ")); return false;}
+	{ UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - Generator not initialized! ")); return false; }
 
 	if (!RoomData || RoomData->WallStyleData.IsNull())
-	{ UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - WallStyleData not assigned!")); return false;}
+	{ UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - WallStyleData not assigned!")); return false; }
 
 	UWallData* WallData = RoomData->WallStyleData. LoadSynchronous();
 	if (!WallData || WallData->AvailableWallModules.Num() == 0)
-	{ UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - No wall modules defined!"));	return false;}
+	{ UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - No wall modules defined!"));	return false; }
+	
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateWalls - Generating doorways first"));
+	if (! GenerateDoorways())
+	{ UE_LOG(LogTemp, Warning, TEXT("  Doorway generation failed, continuing with walls")); }
 
 	// Clear previous data
 	ClearPlacedWalls();
@@ -528,11 +532,22 @@ bool URoomGenerator::GenerateWalls()
 
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateWalls - Starting wall generation"));
 
-	// PASS 0: FORCED WALL PLACEMENTS
+	// PHASE 0:   GENERATE DOORWAYS FIRST (Before any walls are placed!)
+	UE_LOG(LogTemp, Log, TEXT("  Phase 0: Generating doorways"));
+	if (! GenerateDoorways())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("  Doorway generation failed, continuing with walls"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("  Doorways generated:   %d"), PlacedDoorwayMeshes. Num());
+	}
+	
+	// PHASE 1: FORCED WALL PLACEMENTS
 	int32 ForcedCount = ExecuteForcedWallPlacements();
 	if (ForcedCount > 0) UE_LOG(LogTemp, Log, TEXT("  Phase 0: Placed %d forced walls"), ForcedCount);
 	
-	// PASS 1: Generate base walls for each edge
+	// PHASE 2: Generate base walls for each edge
 	FillWallEdge(EWallEdge::North);
 	FillWallEdge(EWallEdge::South);
 	FillWallEdge(EWallEdge::East);
@@ -541,14 +556,14 @@ bool URoomGenerator::GenerateWalls()
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateWalls - Base walls tracked:  %d segments"), 
 		PlacedBaseWallSegments.Num());
 
-	// PASS 2: Spawn middle layers using socket-based stacking
+	// PASS 3: Spawn middle layers using socket-based stacking
 	SpawnMiddleWallLayers();
 
-	// PASS 3: Spawn top layer using socket-based stacking
+	// PASS 4: Spawn top layer using socket-based stacking
 	SpawnTopWallLayer();
 
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateWalls - Complete.  Total wall records: %d"), 
-		PlacedWalls.Num());
+		PlacedWallMeshes.Num());
 
 	return true;
 }
@@ -607,7 +622,7 @@ int32 URoomGenerator::ExecuteForcedWallPlacements()
 
 	 
 		// VALIDATION: Check Edge Cells
-		TArray<int32> EdgeCells = UDungeonGenerationHelpers::GetEdgeCellIndices(ForcedWall.Edge, GridSize);
+		TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers::GetEdgeCellIndices(ForcedWall.Edge, GridSize);
 
 		if (EdgeCells.Num() == 0)
 		{
@@ -678,7 +693,7 @@ bool URoomGenerator::IsCellRangeOccupied(EWallEdge Edge, int32 StartCell, int32 
 
 void URoomGenerator::ClearPlacedWalls()
 {
-	PlacedWalls.Empty();
+	PlacedWallMeshes.Empty();
 }
 
 void URoomGenerator::SpawnMiddleWallLayers()
@@ -720,7 +735,7 @@ void URoomGenerator::SpawnMiddleWallLayers()
 			PlacedWall.BottomTransform = Segment.BaseTransform;
 			PlacedWall.Middle1Transform = Middle1WorldTransform;
 
-			PlacedWalls.Add(PlacedWall);
+			PlacedWallMeshes.Add(PlacedWall);
 			Middle1Spawned++;
 
 			// MIDDLE 2 LAYER
@@ -731,7 +746,7 @@ void URoomGenerator::SpawnMiddleWallLayers()
 				// ✅ Single line replaces 10+ lines of socket querying
 				FTransform Middle2WorldTransform = UDungeonGenerationHelpers::CalculateSocketWorldTransform(
 				Middle1Mesh, FName("TopBackCenter"), Middle1WorldTransform, FVector(0, 0, FallbackHeight));
-				PlacedWalls.Last().Middle2Transform = Middle2WorldTransform;
+				PlacedWallMeshes.Last().Middle2Transform = Middle2WorldTransform;
 				Middle2Spawned++;
 			}
 		}
@@ -751,9 +766,9 @@ void URoomGenerator::SpawnTopWallLayer()
 
 	int32 TopSpawned = 0;
 
-	UE_LOG(LogTemp, Log, TEXT("URoomGenerator:: SpawnTopWallLayer - Processing %d wall segments"), PlacedWalls.Num());
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator:: SpawnTopWallLayer - Processing %d wall segments"), PlacedWallMeshes.Num());
 
-	for (FPlacedWallInfo& Wall :  PlacedWalls)
+	for (FPlacedWallInfo& Wall :  PlacedWallMeshes)
 	{
 		// Load top mesh (required)
 		UStaticMesh* TopMesh = Wall.WallModule. TopMesh.LoadSynchronous();
@@ -797,6 +812,7 @@ void URoomGenerator::SpawnTopWallLayer()
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::SpawnTopWallLayer - Top meshes: %d"), TopSpawned);
 }
 #pragma endregion
+
 #pragma region Corner Generation
 bool URoomGenerator::GenerateCorners()
 {
@@ -900,7 +916,7 @@ bool URoomGenerator::GenerateCorners()
         PlacedCorner.CornerMesh = WallData->DefaultCornerMesh;
         PlacedCorner.Transform = CornerTransform;
 
-        PlacedCorners.Add(PlacedCorner);
+        PlacedCornerMeshes.Add(PlacedCorner);
 
         UE_LOG(LogTemp, Verbose, TEXT("  Placed %s corner at position %s with rotation (%.0f, %.0f, %.0f)"),
             *CornerData.Name,
@@ -910,14 +926,287 @@ bool URoomGenerator::GenerateCorners()
             CornerData.Rotation.Yaw);
     }
 
-    UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateCorners - Complete.  Placed %d corners"), PlacedCorners.Num());
+    UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateCorners - Complete.  Placed %d corners"), PlacedCornerMeshes.Num());
 
     return true;
 }
 
 void URoomGenerator::ClearPlacedCorners()
 {
-	PlacedCorners.Empty();
+	PlacedCornerMeshes.Empty();
+}
+#pragma endregion
+
+#pragma region Doorway Generation
+
+bool URoomGenerator::GenerateDoorways()
+{
+    if (!bIsInitialized)
+    {
+        UE_LOG(LogTemp, Error, TEXT("URoomGenerator:: GenerateDoorways - Generator not initialized!"));
+        return false;
+    }
+
+    if (! RoomData)
+    {
+        UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateDoorways - RoomData is null!"));
+        return false;
+    }
+
+    // Clear previous doorways
+    ClearPlacedDoorways();
+
+    UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateDoorways - Starting doorway generation"));
+
+    int32 ManualDoorwaysPlaced = 0;
+    int32 AutomaticDoorwaysPlaced = 0;
+
+    // ========================================================================
+    // PHASE 1: Process Manual Doorway Placements (ForcedDoorways)
+    // ========================================================================
+
+    for (const FFixedDoorLocation& ForcedDoor : RoomData->ForcedDoorways)
+    {
+        // Validate door data
+        if (!ForcedDoor.DoorData)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("  Forced doorway has null DoorData, using DefaultDoorData"));
+            
+            // Try to use default door data
+            if (! RoomData->DefaultDoorData)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("  No DefaultDoorData available, skipping this doorway"));
+                continue;
+            }
+        }
+
+        // Get door data (use forced or fallback to default)
+        UDoorData* DoorData = ForcedDoor.DoorData ?  ForcedDoor.DoorData : RoomData->DefaultDoorData;
+        
+        // Get door width
+        int32 DoorWidth = FMath::Max(1, DoorData->FrameFootprintY);
+
+        // Validate doorway fits on edge
+        TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers::GetEdgeCellIndices(ForcedDoor.WallEdge, GridSize);
+        
+        if (ForcedDoor.StartCell < 0 || ForcedDoor.StartCell + DoorWidth > EdgeCells.Num())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("  Forced doorway out of bounds:  Edge=%s, StartCell=%d, Width=%d (EdgeLength=%d)"),
+                *UEnum::GetValueAsString(ForcedDoor.WallEdge), ForcedDoor.StartCell, DoorWidth, EdgeCells.Num());
+            continue;
+        }
+
+        // Create doorway placement info
+        FPlacedDoorwayInfo PlacedDoor;
+        PlacedDoor.Edge = ForcedDoor.WallEdge;
+        PlacedDoor.StartCell = ForcedDoor.StartCell;
+        PlacedDoor. WidthInCells = DoorWidth;
+        PlacedDoor.DoorData = DoorData;
+        PlacedDoor.bIsStandardDoorway = false;
+
+        // Calculate frame position (center of doorway span)
+        FVector FramePosition = UDungeonGenerationHelpers:: CalculateDoorwayPosition(
+        ForcedDoor.WallEdge, ForcedDoor.StartCell, DoorWidth, GridSize, CellSize);
+
+        // Apply designer offsets
+        FramePosition += ForcedDoor.DoorPositionOffsets. FramePositionOffset;
+
+        FRotator FrameRotation = UDungeonGenerationHelpers::GetWallRotationForEdge(ForcedDoor.WallEdge);
+        
+        // Apply door-specific rotation offset (from DoorData)
+        FrameRotation += DoorData->FrameRotationOffset;
+        
+        PlacedDoor.FrameTransform = FTransform(FrameRotation, FramePosition, FVector::OneVector);
+
+        // Calculate actor position (same base, different offset)
+        FVector ActorPosition = UDungeonGenerationHelpers:: CalculateDoorwayPosition(
+            ForcedDoor.WallEdge, 
+            ForcedDoor.StartCell, 
+            DoorWidth, 
+            GridSize, 
+            CellSize
+        );
+
+        ActorPosition += ForcedDoor.DoorPositionOffsets. ActorPositionOffset;
+        PlacedDoor.ActorTransform = FTransform(FrameRotation, ActorPosition, FVector::OneVector);
+
+        PlacedDoorwayMeshes.Add(PlacedDoor);
+        ManualDoorwaysPlaced++;
+
+        UE_LOG(LogTemp, Verbose, TEXT("  Placed manual doorway: Edge=%s, StartCell=%d, Width=%d"),
+            *UEnum::GetValueAsString(ForcedDoor.WallEdge), ForcedDoor.StartCell, DoorWidth);
+    }
+
+    // ========================================================================
+    // PHASE 2: Generate Automatic Standard Doorway (if enabled)
+    // ========================================================================
+
+    if (RoomData->bGenerateStandardDoorway)
+    {
+        // Validate default door data
+        if (!RoomData->DefaultDoorData)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("  Standard doorway enabled but no DefaultDoorData assigned, skipping"));
+        }
+        else
+        {
+            // Determine which edge to use
+            EWallEdge ChosenEdge;
+            
+            if (RoomData->bSetStandardDoorwayEdge)
+            {
+                // Use designer-specified edge
+                ChosenEdge = RoomData->StandardDoorwayEdge;
+                UE_LOG(LogTemp, Log, TEXT("  Using manual edge for standard doorway:  %s"), 
+                    *UEnum:: GetValueAsString(ChosenEdge));
+            }
+            else
+            {
+                // Pick random edge
+                FRandomStream Stream(FMath:: Rand());
+                TArray<EWallEdge> AllEdges = {
+                    EWallEdge:: North, 
+                    EWallEdge::South, 
+                    EWallEdge::East, 
+                    EWallEdge::West
+                };
+                ChosenEdge = AllEdges[Stream.RandRange(0, AllEdges.Num() - 1)];
+                
+                UE_LOG(LogTemp, Log, TEXT("  Using random edge for standard doorway: %s"), 
+                    *UEnum::GetValueAsString(ChosenEdge));
+            }
+
+            // Get edge cells
+            TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers::GetEdgeCellIndices(ChosenEdge, GridSize);
+            int32 EdgeLength = EdgeCells.Num();
+
+            // Calculate centered position on edge
+            int32 StartCell = (EdgeLength - RoomData->StandardDoorwayWidth) / 2;
+            StartCell = FMath:: Clamp(StartCell, 0, EdgeLength - RoomData->StandardDoorwayWidth);
+
+            // Check for overlap with manual doorways
+            bool bOverlaps = false;
+            for (const FPlacedDoorwayInfo& ExistingDoor : PlacedDoorwayMeshes)
+            {
+                if (ExistingDoor.Edge == ChosenEdge)
+                {
+                    int32 ExistingStart = ExistingDoor.StartCell;
+                    int32 ExistingEnd = ExistingStart + ExistingDoor. WidthInCells;
+                    int32 NewStart = StartCell;
+                    int32 NewEnd = StartCell + RoomData->StandardDoorwayWidth;
+
+                    // Check for overlap
+                    if (NewStart < ExistingEnd && ExistingStart < NewEnd)
+                    {
+                        bOverlaps = true;
+                        UE_LOG(LogTemp, Warning, TEXT("  Standard doorway would overlap with manual doorway, skipping"));
+                        break;
+                    }
+                }
+            }
+
+            if (!bOverlaps)
+            {
+                // Create standard doorway placement info
+                FPlacedDoorwayInfo StandardDoor;
+                StandardDoor.Edge = ChosenEdge;
+                StandardDoor.StartCell = StartCell;
+                StandardDoor.WidthInCells = RoomData->StandardDoorwayWidth;
+                StandardDoor.DoorData = RoomData->DefaultDoorData;
+                StandardDoor.bIsStandardDoorway = true;
+
+                // Calculate transforms
+                FVector FramePosition = UDungeonGenerationHelpers::CalculateDoorwayPosition(
+                    ChosenEdge, 
+                    StartCell, 
+                    RoomData->StandardDoorwayWidth, 
+                    GridSize, 
+                    CellSize
+                );
+
+                FRotator FrameRotation = UDungeonGenerationHelpers::GetWallRotationForEdge(ChosenEdge);
+                FrameRotation += RoomData->DefaultDoorData->FrameRotationOffset;
+
+                StandardDoor.FrameTransform = FTransform(FrameRotation, FramePosition, FVector::OneVector);
+                StandardDoor.ActorTransform = StandardDoor.FrameTransform;  // Same position for standard door
+
+                PlacedDoorwayMeshes.Add(StandardDoor);
+                AutomaticDoorwaysPlaced++;
+
+                UE_LOG(LogTemp, Log, TEXT("  Generated standard doorway: Edge=%s, StartCell=%d, Width=%d"),
+                    *UEnum:: GetValueAsString(ChosenEdge), StartCell, RoomData->StandardDoorwayWidth);
+            }
+        }
+    }
+
+    // ========================================================================
+    // PHASE 3: Mark Doorway Cells
+    // ========================================================================
+
+    MarkDoorwayCells();
+
+    UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateDoorways - Complete.  Placed %d manual + %d automatic = %d total doorways"), 
+        ManualDoorwaysPlaced, AutomaticDoorwaysPlaced, PlacedDoorwayMeshes.Num());
+
+    return true;
+}
+
+void URoomGenerator::MarkDoorwayCells()
+{
+    for (const FPlacedDoorwayInfo& Doorway : PlacedDoorwayMeshes)
+    {
+        TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers::GetEdgeCellIndices(Doorway.Edge, GridSize);
+
+        for (int32 i = 0; i < Doorway.WidthInCells; ++i)
+        {
+            int32 CellIndex = Doorway.StartCell + i;
+            if (CellIndex >= 0 && CellIndex < EdgeCells.Num())
+            {
+                FIntPoint Cell = EdgeCells[CellIndex];
+                
+                // Mark in grid state (if cell is within interior grid)
+                // Note:  Boundary cells (virtual) are outside interior grid bounds
+                // So we only mark if cell is within (0, GridSize-1)
+                if (Cell.X >= 0 && Cell.X < GridSize. X && Cell.Y >= 0 && Cell.Y < GridSize.Y)
+                {
+                    int32 GridIndex = Cell.Y * GridSize.X + Cell.X;
+                    if (GridState. IsValidIndex(GridIndex))
+                    {
+                        GridState[GridIndex] = EGridCellType::ECT_Doorway;
+                    }
+                }
+                
+                UE_LOG(LogTemp, VeryVerbose, TEXT("    Marked doorway cell:  (%d, %d)"), Cell.X, Cell.Y);
+            }
+        }
+    }
+}
+
+bool URoomGenerator::IsCellPartOfDoorway(FIntPoint Cell) const
+{
+    for (const FPlacedDoorwayInfo& Doorway :  PlacedDoorwayMeshes)
+    {
+        TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers::GetEdgeCellIndices(Doorway.Edge, GridSize);
+
+        for (int32 i = 0; i < Doorway.WidthInCells; ++i)
+        {
+            int32 CellIndex = Doorway. StartCell + i;
+            if (CellIndex >= 0 && CellIndex < EdgeCells.Num())
+            {
+                if (EdgeCells[CellIndex] == Cell)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+void URoomGenerator::ClearPlacedDoorways()
+{
+    PlacedDoorwayMeshes.Empty();
 }
 #pragma endregion
 
@@ -1149,7 +1438,7 @@ void URoomGenerator::FillWallEdge(EWallEdge Edge)
 	UWallData* WallData = RoomData->WallStyleData.LoadSynchronous();
 	if (!WallData || WallData->AvailableWallModules. Num() == 0) return;
 
-	TArray<int32> EdgeCells = UDungeonGenerationHelpers:: GetEdgeCellIndices(Edge, GridSize);  // ✅ New
+	TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers:: GetEdgeCellIndices(Edge, GridSize);  // ✅ New
 	if (EdgeCells.Num() == 0) return;
 
 	FRotator WallRotation = UDungeonGenerationHelpers::GetWallRotationForEdge(Edge);  // ✅ New
@@ -1160,6 +1449,14 @@ void URoomGenerator::FillWallEdge(EWallEdge Edge)
 
 	while (CurrentCell < EdgeCells. Num())
 	{
+		// Skip cells occupied by doorways
+		if (IsCellPartOfDoorway(EdgeCells[CurrentCell]))
+		{
+			UE_LOG(LogTemp, VeryVerbose, TEXT("    Skipping cell %d (doorway)"), CurrentCell);
+			CurrentCell++;
+			continue;
+		}
+		
 		// Skip cells occupied by forced walls
 		if (IsCellRangeOccupied(Edge, CurrentCell, 1))
 		{
