@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Engine/StaticMesh.h"
-#include "Data/Room/DoorData.h"
 #include "GridData.generated.h"
 
 // --- CORE CONSTANT DEFINITION ---
@@ -46,6 +45,16 @@ enum class ECornerPosition : uint8
 	SouthEast = 1  UMETA(DisplayName = "Southeast (Bottom-Right)"),
 	NorthEast = 2  UMETA(DisplayName = "Northeast (Top-Right)"),
 	NorthWest = 3  UMETA(DisplayName = "Northwest (Top-Left)")
+};
+
+/* Side fill strategy for doorways smaller than standard width */
+UENUM(BlueprintType)
+enum class EDoorwaySideFill :  uint8
+{
+	None            UMETA(DisplayName = "None (Leave Empty)"),
+	WallModules     UMETA(DisplayName = "Wall Modules (Bin-Packing)"),
+	CustomMeshes    UMETA(DisplayName = "Custom Meshes"),
+	CornerPieces    UMETA(DisplayName = "Corner Pieces")
 };
 
 // --- Mesh Placement Info (Used by Floor and Interior Meshes) ---
@@ -248,6 +257,37 @@ struct FFixedDoorLocation
 	FDoorPositionOffsets DoorPositionOffsets;
 };
 
+/* Doorway layout information (cached, no transforms) */
+USTRUCT(BlueprintType)
+struct FDoorwayLayoutInfo
+{
+	GENERATED_BODY()
+
+	/* Which wall edge the doorway is on */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Doorway Layout")
+	EWallEdge Edge = EWallEdge::North;
+
+	/* Starting cell index on the edge */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Doorway Layout")
+	int32 StartCell = 0;
+
+	/* Width of doorway in cells */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Doorway Layout")
+	int32 WidthInCells = 4;
+
+	/* Door data asset to use */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Doorway Layout")
+	UDoorData* DoorData = nullptr;
+
+	/* Whether this is a standard (automatic) doorway */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Doorway Layout")
+	bool bIsStandardDoorway = false;
+
+	/* Manual offsets (only used for forced doorways) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Doorway Layout")
+	FDoorPositionOffsets ManualOffsets;
+};
+
 USTRUCT(BlueprintType)
 struct FPlacedDoorwayInfo
 {
@@ -289,3 +329,4 @@ struct FPlacedDoorwayInfo
 		, bIsStandardDoorway(false)
 	{}
 };
+

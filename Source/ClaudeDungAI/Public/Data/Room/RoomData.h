@@ -73,6 +73,15 @@ public:
 	/* Which edge to place standard doorway (if bSetStandardDoorwayEdge = true) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Automatic", meta = (EditCondition = "bSetStandardDoorwayEdge"))
 	EWallEdge StandardDoorwayEdge = EWallEdge::North;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Automatic Placement", 
+	meta = (EditCondition = "bGenerateStandardDoorway && ! bSetStandardDoorwayEdge"))
+	bool bMultipleDoorways = false;
+	
+	/* Number of automatic doorways to generate (only used if bMultipleDoorways = true) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Automatic Placement", 
+		meta = (ClampMin = "2", ClampMax = "4", EditCondition = "bMultipleDoorways && bGenerateStandardDoorway && !bSetStandardDoorwayEdge"))
+	int32 NumAutomaticDoorways = 2;
 
 	/* Default door data (used for standard doorway if not specified) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Defaults")

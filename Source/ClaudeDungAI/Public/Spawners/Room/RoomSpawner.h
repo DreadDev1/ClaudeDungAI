@@ -83,7 +83,16 @@ public:
 	/** Generate doorway meshes (frames only, actors later) */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void GenerateDoorwayMeshes();
+	
+	/** Spawn wall module side fills using bin-packing */
+	void SpawnDoorwaySide_WallModules(const FPlacedDoorwayInfo& Doorway, bool bIsLeftSide, int32 CellCount, FVector RoomOrigin);
 
+	/** Spawn custom mesh side fill */
+	void SpawnDoorwaySide_CustomMesh(const FPlacedDoorwayInfo& Doorway, bool bIsLeftSide, int32 CellCount, FVector RoomOrigin);
+
+	/** Spawn corner piece side fill */
+	void SpawnDoorwaySide_CornerPiece(const FPlacedDoorwayInfo& Doorway, bool bIsLeftSide, int32 CellCount, FVector RoomOrigin);
+	
 	/** Clear all spawned doorway meshes */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void ClearDoorwayMeshes();

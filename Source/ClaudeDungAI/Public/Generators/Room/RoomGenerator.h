@@ -227,6 +227,10 @@ private:
 	// Placed corners
 	UPROPERTY()
 	TArray<FPlacedCornerInfo> PlacedCornerMeshes;
+
+	// Tracked base wall segments for Middle/Top spawning
+	UPROPERTY()
+	TArray<FGeneratorWallSegment> PlacedBaseWallSegments;
 	
 	// ✅ NEW: Placed doorways
 	UPROPERTY()
@@ -238,13 +242,12 @@ private:
 	int32 SmallTilesPlaced;
 	int32 FillerTilesPlaced;
 
-
-
-	// Tracked base wall segments for Middle/Top spawning
+	// Cached doorway layouts (persistent until ClearRoomGrid)
 	UPROPERTY()
-	TArray<FGeneratorWallSegment> PlacedBaseWallSegments;
-	
-	
+	TArray<FDoorwayLayoutInfo> CachedDoorwayLayouts;
+
+	// Helper to calculate transforms from layout
+	FPlacedDoorwayInfo CalculateDoorwayTransforms(const FDoorwayLayoutInfo& Layout);
 #pragma endregion
 
 #pragma region Internal Floor Generation Functions
