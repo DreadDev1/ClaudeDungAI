@@ -110,4 +110,20 @@ class CLAUDEDUNGAI_API UDoorData : public UDataAsset
 		default:                return FDoorPositionOffsets();
 		}
 	}
+	
+	/* Calculate total doorway width including frame and side fills
+  * Side fills are always 1 cell each when present */
+	UFUNCTION(BlueprintPure, Category = "Door Data")
+	int32 GetTotalDoorwayWidth() const
+	{
+		int32 TotalWidth = FrameFootprintY;  // Start with frame (typically 2 cells)
+        
+		// Add side fills (1 cell each side when enabled)
+		if (SideFillType != EDoorwaySideFill::None)
+		{
+			TotalWidth += 2;  // 1 left + 1 right = 2 cells
+		}
+        
+		return TotalWidth;
+	}
 };

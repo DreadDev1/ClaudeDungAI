@@ -437,47 +437,36 @@ void ARoomSpawner::GenerateDoorwayMeshes()
 
     if (! EnsureGeneratorReady())
     {
-        DebugHelpers->LogCritical(TEXT("Failed to initialize generator! "));
+        DebugHelpers->LogCritical(TEXT("Failed to initialize generator!"));
         DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
         return;
     }
 
-    // Clear existing doorway MESHES (but keep doorway LAYOUT)
+    // Clear existing doorway MESHES
     ClearDoorwayMeshes();
 
-    // Check if doorways already exist from wall generation
-    const TArray<FPlacedDoorwayInfo>& PlacedDoorways = RoomGenerator->GetPlacedDoorways();
+    // ✅ CHANGED:   ALWAYS call GenerateDoorways() to recalculate transforms
+    // If cache exists, it will reuse layout but recalculate with current offsets
+    // If no cache, it will generate new layout
+    DebugHelpers->LogImportant(TEXT("Regenerating doorway transforms with current offsets... "));
     
-    if (PlacedDoorways. Num() == 0)
+    if (! RoomGenerator->GenerateDoorways())
     {
-        // No doorways exist yet - generate them now
-        DebugHelpers->LogImportant(TEXT("No existing doorways found - generating layout... "));
-        
-        if (! RoomGenerator->GenerateDoorways())
-        {
-            DebugHelpers->LogCritical(TEXT("Doorway generation failed!"));
-            DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
-            return;
-        }
-        
-        const TArray<FPlacedDoorwayInfo>& NewDoorways = RoomGenerator->GetPlacedDoorways();
-        
-        if (NewDoorways.Num() == 0)
-        {
-            DebugHelpers->LogImportant(TEXT("No doorways to spawn (none configured)"));
-            DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
-            return;
-        }
-    }
-    else
-    {
-        DebugHelpers->LogImportant(FString::Printf(TEXT("Using existing doorway layout (%d doorways)"), 
-            PlacedDoorways.Num()));
+        DebugHelpers->LogCritical(TEXT("Doorway generation failed!"));
+        DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
+        return;
     }
 
-    // Now spawn the doorway meshes using the existing layout
+    // Get doorways (either from cache or newly generated)
     const TArray<FPlacedDoorwayInfo>& FinalDoorways = RoomGenerator->GetPlacedDoorways();
     
+    if (FinalDoorways. Num() == 0)
+    {
+        DebugHelpers->LogImportant(TEXT("No doorways to spawn (none configured)"));
+        DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
+        return;
+    }
+
     DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d doorway frames... "), FinalDoorways.Num()));
 
     // Get room origin for world space conversion
@@ -486,11 +475,8 @@ void ARoomSpawner::GenerateDoorwayMeshes()
     int32 FramesSpawned = 0;
     int32 FramesSkipped = 0;
 
-    // ========================================================================
-    // SPAWN DOORWAY FRAME MESHES + SIDE FILLS
-    // ========================================================================
-    
-    for (const FPlacedDoorwayInfo& PlacedDoor : FinalDoorways)  // ← PlacedDoor is defined here! 
+    // Spawn doorway frame meshes
+    for (const FPlacedDoorwayInfo& PlacedDoor : FinalDoorways)
     {
         // Validate door data
         if (!PlacedDoor.DoorData)
@@ -513,7 +499,7 @@ void ARoomSpawner::GenerateDoorwayMeshes()
         // Get or create ISM component for door frame mesh
         UInstancedStaticMeshComponent* ISM = UDungeonSpawnerHelpers::GetOrCreateISMComponent(
             this,
-            PlacedDoor. DoorData->FrameSideMesh,
+            PlacedDoor.DoorData->FrameSideMesh,
             DoorwayMeshComponents,
             TEXT("DoorFrameISM_"),
             true
@@ -534,91 +520,69 @@ void ARoomSpawner::GenerateDoorwayMeshes()
                 
                 FString DoorType = PlacedDoor.bIsStandardDoorway ? TEXT("Standard") : TEXT("Manual");
                 DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawned %s doorway frame on edge %s (instance %d)"),
-                    *DoorType, *UEnum:: GetValueAsString(PlacedDoor.Edge), InstanceIndex));
+                    *DoorType, *UEnum::GetValueAsString(PlacedDoor.Edge), InstanceIndex));
             }
             else
             {
                 DebugHelpers->LogVerbose(FString::Printf(TEXT("  Failed to spawn doorway frame on edge %s"),
                     *UEnum::GetValueAsString(PlacedDoor. Edge)));
                 FramesSkipped++;
-                continue;  // Skip side fills if frame failed
+                continue;
             }
         }
         else
         {
             DebugHelpers->LogVerbose(TEXT("  Failed to create ISM component for doorway"));
             FramesSkipped++;
-            continue;  // Skip side fills if ISM creation failed
+            continue;
         }
 
-        // ✅ NEW:  SPAWN SIDE FILLS (after successful frame spawn)
+        // ✅ Spawn side fills if configured
         if (PlacedDoor.DoorData->SideFillType != EDoorwaySideFill::None)
         {
-            // Calculate side fill requirements
             int32 TotalDoorwayWidth = PlacedDoor. WidthInCells;
-            int32 DoorFrameWidth = PlacedDoor. DoorData->FrameFootprintY;
+            int32 DoorFrameWidth = PlacedDoor.DoorData->FrameFootprintY;
             int32 SideFillTotal = TotalDoorwayWidth - DoorFrameWidth;
             
             if (SideFillTotal > 0)
             {
-                // Split evenly between left and right
                 int32 LeftSideCells = SideFillTotal / 2;
                 int32 RightSideCells = SideFillTotal - LeftSideCells;
                 
-                DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawning side fills: Left=%d cells, Right=%d cells, Type=%s"),
+                DebugHelpers->LogVerbose(FString::Printf(TEXT("  Spawning side fills:  Left=%d cells, Right=%d cells, Type=%s"),
                     LeftSideCells, RightSideCells, *UEnum::GetValueAsString(PlacedDoor.DoorData->SideFillType)));
                 
-                // Spawn based on fill type
                 switch (PlacedDoor.DoorData->SideFillType)
                 {
-                    case EDoorwaySideFill::WallModules: 
-                        // Use wall module bin-packing
+                    case EDoorwaySideFill:: WallModules:
                         if (LeftSideCells > 0)
-                        {
                             SpawnDoorwaySide_WallModules(PlacedDoor, true, LeftSideCells, RoomOrigin);
-                        }
                         if (RightSideCells > 0)
-                        {
                             SpawnDoorwaySide_WallModules(PlacedDoor, false, RightSideCells, RoomOrigin);
-                        }
                         break;
                         
-                    case EDoorwaySideFill::CustomMeshes: 
-                        // Use custom meshes
+                    case EDoorwaySideFill::CustomMeshes:
                         if (LeftSideCells > 0)
-                        {
                             SpawnDoorwaySide_CustomMesh(PlacedDoor, true, LeftSideCells, RoomOrigin);
-                        }
                         if (RightSideCells > 0)
-                        {
                             SpawnDoorwaySide_CustomMesh(PlacedDoor, false, RightSideCells, RoomOrigin);
-                        }
                         break;
                         
-                    case EDoorwaySideFill:: CornerPieces: 
-                        // Use corner pieces
+                    case EDoorwaySideFill:: CornerPieces:
                         if (LeftSideCells > 0)
-                        {
                             SpawnDoorwaySide_CornerPiece(PlacedDoor, true, LeftSideCells, RoomOrigin);
-                        }
                         if (RightSideCells > 0)
-                        {
                             SpawnDoorwaySide_CornerPiece(PlacedDoor, false, RightSideCells, RoomOrigin);
-                        }
                         break;
                         
                     default:
                         break;
                 }
             }
-            else
-            {
-                DebugHelpers->LogVerbose(TEXT("  Door frame fills entire doorway width - no side fills needed"));
-            }
         }
-    }  // ← End of for loop
+    }
 
-    DebugHelpers->LogImportant(FString::Printf(TEXT("Doorway spawning complete:  %d frames spawned, %d skipped"),
+    DebugHelpers->LogImportant(FString::Printf(TEXT("Doorway spawning complete: %d frames spawned, %d skipped"),
         FramesSpawned, FramesSkipped));
     DebugHelpers->LogSectionHeader(TEXT("GENERATE DOORWAY MESHES"));
 }

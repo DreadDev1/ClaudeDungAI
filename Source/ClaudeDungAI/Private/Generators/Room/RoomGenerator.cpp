@@ -519,14 +519,10 @@ bool URoomGenerator::GenerateWalls()
 	if (!RoomData || RoomData->WallStyleData.IsNull())
 	{ UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - WallStyleData not assigned!")); return false; }
 
-	UWallData* WallData = RoomData->WallStyleData. LoadSynchronous();
+	UWallData* WallData = RoomData->WallStyleData.LoadSynchronous();
 	if (!WallData || WallData->AvailableWallModules.Num() == 0)
 	{ UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateWalls - No wall modules defined!"));	return false; }
 	
-	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateWalls - Generating doorways first"));
-	if (! GenerateDoorways())
-	{ UE_LOG(LogTemp, Warning, TEXT("  Doorway generation failed, continuing with walls")); }
-
 	// Clear previous data
 	ClearPlacedWalls();
 	PlacedBaseWallSegments.Empty();  // ✅ Clear tracking array
@@ -536,13 +532,9 @@ bool URoomGenerator::GenerateWalls()
 	// PHASE 0:   GENERATE DOORWAYS FIRST (Before any walls are placed!)
 	UE_LOG(LogTemp, Log, TEXT("  Phase 0: Generating doorways"));
 	if (! GenerateDoorways())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("  Doorway generation failed, continuing with walls"));
-	}
+	{ UE_LOG(LogTemp, Warning, TEXT("  Doorway generation failed, continuing with walls")); }
 	else
-	{
-		UE_LOG(LogTemp, Log, TEXT("  Doorways generated:   %d"), PlacedDoorwayMeshes. Num());
-	}
+	{ UE_LOG(LogTemp, Log, TEXT("  Doorways generated:   %d"), PlacedDoorwayMeshes. Num()); }
 	
 	// PHASE 1: FORCED WALL PLACEMENTS
 	int32 ForcedCount = ExecuteForcedWallPlacements();
@@ -1007,8 +999,9 @@ bool URoomGenerator::GenerateDoorways()
             continue;
         }
         
-        int32 DoorWidth = FMath::Max(1, DoorData->FrameFootprintY);
-
+    	int32 DoorWidth = DoorData->GetTotalDoorwayWidth();
+    	UE_LOG(LogTemp, Log, TEXT("  Manual doorway:  Edge=%s, FrameFootprint=%d, SideFills=%s, TotalWidth=%d"),
+    	*UEnum::GetValueAsString(ForcedDoor.WallEdge), DoorData->FrameFootprintY, *UEnum:: GetValueAsString(DoorData->SideFillType), DoorWidth);
         // Validate bounds
         TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers::GetEdgeCellIndices(ForcedDoor.WallEdge, GridSize);
         
@@ -1020,7 +1013,7 @@ bool URoomGenerator::GenerateDoorways()
 
         // ✅ Create and cache layout info
         FDoorwayLayoutInfo LayoutInfo;
-        LayoutInfo.Edge = ForcedDoor.  WallEdge;
+        LayoutInfo.Edge = ForcedDoor.WallEdge;
         LayoutInfo.StartCell = ForcedDoor.StartCell;
         LayoutInfo.WidthInCells = DoorWidth;
         LayoutInfo.DoorData = DoorData;
@@ -1241,24 +1234,29 @@ void URoomGenerator::MarkDoorwayCells()
 
 bool URoomGenerator::IsCellPartOfDoorway(FIntPoint Cell) const
 {
-    for (const FPlacedDoorwayInfo& Doorway :  PlacedDoorwayMeshes)
-    {
-        TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers::GetEdgeCellIndices(Doorway.Edge, GridSize);
+	for (const FPlacedDoorwayInfo& Doorway :  PlacedDoorwayMeshes)
+	{
+		TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers::GetEdgeCellIndices(Doorway. Edge, GridSize);
 
-        for (int32 i = 0; i < Doorway.WidthInCells; ++i)
-        {
-            int32 CellIndex = Doorway. StartCell + i;
-            if (CellIndex >= 0 && CellIndex < EdgeCells.Num())
-            {
-                if (EdgeCells[CellIndex] == Cell)
-                {
-                    return true;
-                }
-            }
-        }
-    }
+		for (int32 i = 0; i < Doorway.WidthInCells; ++i)
+		{
+			int32 CellIndex = Doorway.StartCell + i;
+			if (CellIndex >= 0 && CellIndex < EdgeCells.Num())
+			{
+				FIntPoint DoorwayCell = EdgeCells[CellIndex];
+                
+				// ✅ ADD LOGGING: 
+				if (Cell == DoorwayCell)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("    Cell (%d,%d) IS part of doorway on edge %s at index %d"),
+						Cell. X, Cell.Y, *UEnum::GetValueAsString(Doorway.Edge), CellIndex);
+					return true;
+				}
+			}
+		}
+	}
 
-    return false;
+	return false;
 }
 
 void URoomGenerator::ClearPlacedDoorways()
@@ -1490,85 +1488,128 @@ FIntPoint URoomGenerator:: IndexToGridCoord(int32 Index) const
 
 void URoomGenerator::FillWallEdge(EWallEdge Edge)
 {
-	if (!RoomData || RoomData->WallStyleData. IsNull()) return;
+    if (!  RoomData || RoomData->WallStyleData.IsNull()) return;
 
-	UWallData* WallData = RoomData->WallStyleData.LoadSynchronous();
-	if (!WallData || WallData->AvailableWallModules. Num() == 0) return;
+    UWallData* WallData = RoomData->WallStyleData.LoadSynchronous();
+    if (!WallData || WallData->AvailableWallModules. Num() == 0) return;
 
-	TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers:: GetEdgeCellIndices(Edge, GridSize);  // ✅ New
-	if (EdgeCells.Num() == 0) return;
+    TArray<FIntPoint> EdgeCells = UDungeonGenerationHelpers::GetEdgeCellIndices(Edge, GridSize);
+    if (EdgeCells.Num() == 0) return;
 
-	FRotator WallRotation = UDungeonGenerationHelpers::GetWallRotationForEdge(Edge);  // ✅ New
-	UE_LOG(LogTemp, Verbose, TEXT("  Filling edge %d with %d cells"),	(int32)Edge, EdgeCells.Num());
+    FRotator WallRotation = UDungeonGenerationHelpers:: GetWallRotationForEdge(Edge);
+    UE_LOG(LogTemp, Verbose, TEXT("  Filling edge %s with %d cells"),
+        *UEnum::GetValueAsString(Edge), EdgeCells.Num());
 
-	// Greedy bin packing:  Fill with largest modules first (BASE LAYER ONLY)
-	int32 CurrentCell = 0;
+    // Greedy bin packing: Fill with largest modules first (BASE LAYER ONLY)
+    int32 CurrentCell = 0;
 
-	while (CurrentCell < EdgeCells. Num())
-	{
-		// Skip cells occupied by doorways
-		if (IsCellPartOfDoorway(EdgeCells[CurrentCell]))
-		{
-			UE_LOG(LogTemp, VeryVerbose, TEXT("    Skipping cell %d (doorway)"), CurrentCell);
-			CurrentCell++;
-			continue;
-		}
-		
-		// Skip cells occupied by forced walls
-		if (IsCellRangeOccupied(Edge, CurrentCell, 1))
-		{
-			UE_LOG(LogTemp, VeryVerbose, TEXT("    Skipping cell %d (occupied by forced wall)"), CurrentCell);
-			CurrentCell++;
-			continue;
-		}
-		
-		// Find largest module that fits remaining space
-		const FWallModule* BestModule = nullptr;
-		int32 SpaceLeft = EdgeCells. Num() - CurrentCell;
+    while (CurrentCell < EdgeCells. Num())
+    {
+        // ✅ FIXED:   Check if THIS SPECIFIC CELL is part of a doorway
+        FIntPoint CellToCheck = EdgeCells[CurrentCell];
+        
+        if (IsCellPartOfDoorway(CellToCheck))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("    Skipping cell %d (%d,%d) - part of doorway"),
+                CurrentCell, CellToCheck.X, CellToCheck.Y);
+            CurrentCell++;
+            continue;
+        }
+        
+        // Skip cells occupied by forced walls
+        if (IsCellRangeOccupied(Edge, CurrentCell, 1))
+        {
+            UE_LOG(LogTemp, VeryVerbose, TEXT("    Skipping cell %d (occupied by forced wall)"), CurrentCell);
+            CurrentCell++;
+            continue;
+        }
+        
+        // Find largest module that fits remaining space
+        const FWallModule* BestModule = nullptr;
+        int32 SpaceLeft = EdgeCells.Num() - CurrentCell;
 
-		for (const FWallModule& Module : WallData->AvailableWallModules)
-		{
-			if (Module.Y_AxisFootprint <= SpaceLeft && 
-				! IsCellRangeOccupied(Edge, CurrentCell, Module.Y_AxisFootprint))
-			{
-				if (! BestModule || Module.Y_AxisFootprint > BestModule->Y_AxisFootprint) BestModule = &Module;
-			}
-		}
+        for (const FWallModule& Module : WallData->AvailableWallModules)
+        {
+            // ✅ FIXED:  Check if the ENTIRE module span overlaps with doorways
+            bool bModuleOverlapsDoorway = false;
+            
+            for (int32 i = 0; i < Module. Y_AxisFootprint; ++i)
+            {
+                int32 CheckIndex = CurrentCell + i;
+                if (CheckIndex < EdgeCells.Num())
+                {
+                    FIntPoint CheckCell = EdgeCells[CheckIndex];
+                    if (IsCellPartOfDoorway(CheckCell))
+                    {
+                        bModuleOverlapsDoorway = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (bModuleOverlapsDoorway)
+            {
+                continue;  // Skip this module - it would overlap a doorway
+            }
+            
+            if (Module.Y_AxisFootprint <= SpaceLeft && 
+                !  IsCellRangeOccupied(Edge, CurrentCell, Module.Y_AxisFootprint))
+            {
+                if (!  BestModule || Module.Y_AxisFootprint > BestModule->Y_AxisFootprint)
+                {
+                    BestModule = &Module;
+                }
+            }
+        }
 
-		if (! BestModule)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("    No wall module fits remaining %d cells on edge %d"), 
-			SpaceLeft, (int32)Edge); CurrentCell++;  // Skip this cell and try next
-			continue;
-		}
+        if (! BestModule)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("    No wall module fits remaining %d cells on edge %s at cell %d"), 
+                SpaceLeft, *UEnum::GetValueAsString(Edge), CurrentCell);
+            CurrentCell++;  // Skip this cell and try next
+            continue;
+        }
 
-		// Load base mesh
-		UStaticMesh* BaseMesh = BestModule->BaseMesh.LoadSynchronous();
-		if (!BaseMesh) { UE_LOG(LogTemp, Warning, TEXT("    Failed to load base mesh for wall module")); break; }
+        // Load base mesh
+        UStaticMesh* BaseMesh = BestModule->BaseMesh.LoadSynchronous();
+        if (!BaseMesh)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("    Failed to load base mesh for wall module"));
+            break;
+        }
 
-		// Calculate position for this wall segment
-		FVector BasePosition = UDungeonGenerationHelpers::CalculateWallPosition(
-		Edge, CurrentCell,BestModule->Y_AxisFootprint, GridSize, CellSize,
-		WallData->NorthWallOffsetX, WallData->SouthWallOffsetX,	WallData->EastWallOffsetY,WallData->WestWallOffsetY);  // ✅ New
+        // Calculate position for this wall segment
+        FVector BasePosition = UDungeonGenerationHelpers:: CalculateWallPosition(
+            Edge,
+            CurrentCell,
+            BestModule->Y_AxisFootprint,
+            GridSize,
+            CellSize,
+            WallData->NorthWallOffsetX,
+            WallData->SouthWallOffsetX,
+            WallData->EastWallOffsetY,
+            WallData->WestWallOffsetY
+        );
 
-		// Create base wall transform
-		FTransform BaseTransform(WallRotation, BasePosition, FVector:: OneVector);
+        // Create base wall transform
+        FTransform BaseTransform(WallRotation, BasePosition, FVector:: OneVector);
 
-		// Store segment info for Middle/Top spawning (CRITICAL - matches MasterRoom)
-		FGeneratorWallSegment Segment;
-		Segment.Edge = Edge;
-		Segment. StartCell = CurrentCell;
-		Segment.SegmentLength = BestModule->Y_AxisFootprint;
-		Segment. BaseTransform = BaseTransform;
-		Segment.BaseMesh = BaseMesh;
-		Segment.WallModule = BestModule;  // Store pointer to module data
+        // Store segment info for Middle/Top spawning
+        FGeneratorWallSegment Segment;
+        Segment.Edge = Edge;
+        Segment. StartCell = CurrentCell;
+        Segment. SegmentLength = BestModule->Y_AxisFootprint;
+        Segment.BaseTransform = BaseTransform;
+        Segment.BaseMesh = BaseMesh;
+        Segment.WallModule = BestModule;
 
-		PlacedBaseWallSegments.Add(Segment);
+        PlacedBaseWallSegments.Add(Segment);
 
-		UE_LOG(LogTemp, VeryVerbose, TEXT("    Tracked %d-cell base wall at cell %d"), BestModule->Y_AxisFootprint, CurrentCell);
+        UE_LOG(LogTemp, VeryVerbose, TEXT("    Tracked %d-cell base wall at cell %d"),
+            BestModule->Y_AxisFootprint, CurrentCell);
 
-		// Advance to next segment
-		CurrentCell += BestModule->Y_AxisFootprint;
-	}
+        // Advance to next segment
+        CurrentCell += BestModule->Y_AxisFootprint;
+    }
 }
 #pragma endregion
