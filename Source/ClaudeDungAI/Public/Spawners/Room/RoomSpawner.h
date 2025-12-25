@@ -9,6 +9,7 @@
 #include "Data/Room/RoomData.h"
 #include "RoomSpawner.generated.h"
 
+class ADoorwayActor;
 class UWallData;
 class UTextRenderComponent;
 class UInstancedStaticMeshComponent;
@@ -83,16 +84,7 @@ public:
 	/** Generate doorway meshes (frames only, actors later) */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void GenerateDoorwayMeshes();
-	
-	/** Spawn wall module side fills using bin-packing */
-	void SpawnDoorwaySide_WallModules(const FPlacedDoorwayInfo& Doorway, bool bIsLeftSide, int32 CellCount, FVector RoomOrigin);
-
-	/** Spawn custom mesh side fill */
-	void SpawnDoorwaySide_CustomMesh(const FPlacedDoorwayInfo& Doorway, bool bIsLeftSide, int32 CellCount, FVector RoomOrigin);
-
-	/** Spawn corner piece side fill */
-	void SpawnDoorwaySide_CornerPiece(const FPlacedDoorwayInfo& Doorway, bool bIsLeftSide, int32 CellCount, FVector RoomOrigin);
-	
+		
 	/** Clear all spawned doorway meshes */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void ClearDoorwayMeshes();
@@ -152,9 +144,14 @@ private:
 	UPROPERTY()
 	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> CornerMeshComponents;
 	
-	// Track spawned doorway frame mesh instances
+	/* Spawned doorway actors (replaces ISM doorway system) */
 	UPROPERTY()
-	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> DoorwayMeshComponents;
+	TArray<ADoorwayActor*> SpawnedDoorwayActors;
+
+	/* Blueprint class to use for doorway actors
+	 * Defaults to ADoorwayActor, but can be overridden with Blueprint subclass */
+	UPROPERTY(EditAnywhere, Category = "Room Generation|Doorways")
+	TSubclassOf<ADoorwayActor> DoorwayActorClass;
 	
 	// Helper functions
 	void SpawnWallSegment(const FPlacedWallInfo& PlacedWall, const FVector& RoomOrigin);

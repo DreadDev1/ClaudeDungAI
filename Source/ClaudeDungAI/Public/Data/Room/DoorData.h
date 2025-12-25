@@ -7,6 +7,7 @@
 #include "Engine/DataAsset.h"
 #include "DoorData.generated.h"
 
+class ADoorwayActor;
 // Forward declarations
 struct FWallModule;
 
@@ -83,8 +84,8 @@ class CLAUDEDUNGAI_API UDoorData : public UDataAsset
 	// --- Functional Door Actor ---
 
 	// The actual Blueprint Class of the Door Actor (e.g., an actor that handles opening/closing/replication)
-	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door Functionality")
-	//TSubclassOf<ADoorway> DoorwayClass;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door Functionality")
+	TSubclassOf<ADoorwayActor> DoorwayClass;
 
 	// --- Connection Logic ---
 
