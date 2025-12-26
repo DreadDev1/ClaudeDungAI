@@ -1526,7 +1526,7 @@ bool URoomGenerator::GenerateCeiling()
 
 int32 URoomGenerator::ExecuteForcedCeilingPlacements(TArray<bool>& CeilingOccupied)
 {
-	if (! bIsInitialized || !RoomData)
+	if (!bIsInitialized || !RoomData)
 	{
 		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::ExecuteForcedCeilingPlacements - Not initialized! "));
 		return 0;
@@ -1540,7 +1540,7 @@ int32 URoomGenerator::ExecuteForcedCeilingPlacements(TArray<bool>& CeilingOccupi
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedCeilingPlacements - Processing %d forced tiles"),
-		RoomData->ForcedCeilingPlacements.Num());
+		RoomData->ForcedCeilingPlacements. Num());
 
 	int32 SuccessfulPlacements = 0;
 	int32 FailedPlacements = 0;
@@ -1553,43 +1553,74 @@ int32 URoomGenerator::ExecuteForcedCeilingPlacements(TArray<bool>& CeilingOccupi
 		return 0;
 	}
 
-	for (int32 i = 0; i < RoomData->ForcedCeilingPlacements. Num(); ++i)
+	for (int32 i = 0; i < RoomData->ForcedCeilingPlacements.Num(); ++i)
 	{
 		const FForcedCeilingPlacement& ForcedTile = RoomData->ForcedCeilingPlacements[i];
 		const FCeilingTile& TileInfo = ForcedTile.TileInfo;
 
-		UE_LOG(LogTemp, Verbose, TEXT("  Forced Tile [%d]:  Coord=(%d,%d), Footprint=(%d,%d)"),
-			i, ForcedTile.GridCoordinate. X, ForcedTile. GridCoordinate.Y,
-			TileInfo.GridFootprint.X, TileInfo.GridFootprint.Y);
+		UE_LOG(LogTemp, Log, TEXT("  Forced Tile [%d]: Coord=(%d,%d), Footprint=(%d,%d), AllowedRotations=%d"),
+			i, ForcedTile.GridCoordinate.X, ForcedTile.GridCoordinate.Y,
+			TileInfo.GridFootprint.X, TileInfo. GridFootprint.Y,
+			ForcedTile. AllowedRotations.Num());
 
 		// VALIDATION: Load mesh
-		UStaticMesh* Mesh = TileInfo.Mesh.LoadSynchronous();
+		UStaticMesh* Mesh = TileInfo. Mesh.LoadSynchronous();
 		if (!Mesh)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("    SKIPPED: Mesh failed to load"));
+			UE_LOG(LogTemp, Warning, TEXT("    SKIPPED:  Mesh failed to load"));
 			FailedPlacements++;
 			continue;
 		}
 
-		// VALIDATION: Check bounds
-		int32 StartX = ForcedTile.GridCoordinate.X;
+		// ✅ FIXED:  Determine rotation with proper logic
+		FRotator TileRotation = CeilingData->CeilingRotation;  // Start with base rotation
+		int32 AdditionalYaw = 0;  // Track additional rotation for logging
+		
+		if (ForcedTile.AllowedRotations.Num() > 0)
+		{
+			// Pick random rotation from allowed list
+			int32 RandomIndex = FMath:: RandRange(0, ForcedTile.AllowedRotations.Num() - 1);
+			AdditionalYaw = ForcedTile.AllowedRotations[RandomIndex];
+			
+			// Add to base rotation
+			TileRotation. Yaw += AdditionalYaw;
+			
+			// ✅ NEW: Log the selected rotation
+			UE_LOG(LogTemp, Log, TEXT("    Selected rotation: %d° (from %d options, index %d)"),
+				AdditionalYaw, ForcedTile.AllowedRotations.Num(), RandomIndex);
+			UE_LOG(LogTemp, Log, TEXT("    Final rotation:  Pitch=%.1f, Yaw=%.1f, Roll=%.1f"),
+				TileRotation.Pitch, TileRotation.Yaw, TileRotation.Roll);
+		}
+		else
+		{
+			// ✅ NEW: Log default rotation usage
+			UE_LOG(LogTemp, Log, TEXT("    Using default CeilingData rotation:  Pitch=%.1f, Yaw=%.1f, Roll=%.1f"),
+				TileRotation.Pitch, TileRotation.Yaw, TileRotation.Roll);
+		}
+
+		// VALIDATION:  Check bounds (use potentially rotated footprint)
+		int32 StartX = ForcedTile. GridCoordinate.X;
 		int32 StartY = ForcedTile.GridCoordinate.Y;
-		int32 EndX = StartX + TileInfo.GridFootprint. X;
-		int32 EndY = StartY + TileInfo.GridFootprint.Y;
+		
+		// ✅ IMPORTANT: Get rotated footprint for bounds checking
+		FIntPoint EffectiveFootprint = GetRotatedFootprint(TileInfo. GridFootprint, AdditionalYaw);
+		
+		int32 EndX = StartX + EffectiveFootprint.X;
+		int32 EndY = StartY + EffectiveFootprint.Y;
 
 		if (EndX > GridSize.X || EndY > GridSize.Y || StartX < 0 || StartY < 0)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("    SKIPPED:  Out of bounds (Start=%d,%d, End=%d,%d, GridSize=%d,%d)"),
-				StartX, StartY, EndX, EndY, GridSize. X, GridSize.Y);
+				StartX, StartY, EndX, EndY, GridSize.X, GridSize.Y);
 			FailedPlacements++;
 			continue;
 		}
 
-		// VALIDATION: Check if area is available
+		// VALIDATION: Check if area is available (use rotated footprint)
 		bool bCanPlace = true;
-		for (int32 dy = 0; dy < TileInfo. GridFootprint.Y; ++dy)
+		for (int32 dy = 0; dy < EffectiveFootprint.Y; ++dy)
 		{
-			for (int32 dx = 0; dx < TileInfo.GridFootprint.X; ++dx)
+			for (int32 dx = 0; dx < EffectiveFootprint.X; ++dx)
 			{
 				int32 CheckX = StartX + dx;
 				int32 CheckY = StartY + dy;
@@ -1611,28 +1642,28 @@ int32 URoomGenerator::ExecuteForcedCeilingPlacements(TArray<bool>& CeilingOccupi
 			continue;
 		}
 
-		// PLACEMENT: Calculate transform
+		// PLACEMENT: Calculate transform (use rotated footprint for centering)
 		FVector TilePosition = FVector(
-			(StartX + TileInfo.GridFootprint.X / 2.0f) * CellSize,
-			(StartY + TileInfo.GridFootprint.Y / 2.0f) * CellSize,
+			(StartX + EffectiveFootprint.X / 2.0f) * CellSize,
+			(StartY + EffectiveFootprint.Y / 2.0f) * CellSize,
 			CeilingData->CeilingHeight
 		);
 
-		FTransform TileTransform(CeilingData->CeilingRotation, TilePosition, FVector(1.0f));
+		FTransform TileTransform(TileRotation, TilePosition, FVector(1.0f));
 
 		// TRACKING: Store placed tile
 		FPlacedCeilingInfo PlacedTile;
 		PlacedTile.GridCoordinate = FIntPoint(StartX, StartY);
-		PlacedTile. TileSize = TileInfo. GridFootprint;
+		PlacedTile.TileSize = EffectiveFootprint;  // ✅ Use rotated footprint
 		PlacedTile.Mesh = TileInfo.Mesh;
 		PlacedTile.Transform = TileTransform;
 
-		PlacedCeilingTiles. Add(PlacedTile);
+		PlacedCeilingTiles.Add(PlacedTile);
 
-		// OCCUPANCY:  Mark cells as occupied
-		for (int32 dy = 0; dy < TileInfo.GridFootprint.Y; ++dy)
+		// OCCUPANCY: Mark cells as occupied (use rotated footprint)
+		for (int32 dy = 0; dy < EffectiveFootprint.Y; ++dy)
 		{
-			for (int32 dx = 0; dx < TileInfo.GridFootprint.X; ++dx)
+			for (int32 dx = 0; dx < EffectiveFootprint. X; ++dx)
 			{
 				int32 MarkX = StartX + dx;
 				int32 MarkY = StartY + dy;
@@ -1645,8 +1676,8 @@ int32 URoomGenerator::ExecuteForcedCeilingPlacements(TArray<bool>& CeilingOccupi
 			}
 		}
 
-		UE_LOG(LogTemp, Verbose, TEXT("    ✓ Placed forced tile at (%d,%d) size (%dx%d)"),
-			StartX, StartY, TileInfo.GridFootprint.X, TileInfo.GridFootprint.Y);
+		UE_LOG(LogTemp, Log, TEXT("    ✓ Placed forced tile at (%d,%d) size (%dx%d) rotation (%.0f°)"),
+			StartX, StartY, EffectiveFootprint.X, EffectiveFootprint.Y, TileRotation.Yaw);
 		SuccessfulPlacements++;
 	}
 
@@ -1655,8 +1686,6 @@ int32 URoomGenerator::ExecuteForcedCeilingPlacements(TArray<bool>& CeilingOccupi
 
 	return SuccessfulPlacements;
 }
-
-
 #pragma endregion
 
 #pragma region Internal Floor Generation

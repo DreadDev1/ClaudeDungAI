@@ -345,5 +345,9 @@ struct FForcedCeilingPlacement
 	/* Ceiling tile info to place at this location */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Forced Placement")
 	FCeilingTile TileInfo;
+	
+	/* Allowed rotations for this placement (0, 90, 180, 270) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Forced Placement")
+	TArray<int32> AllowedRotations;
 };
 
