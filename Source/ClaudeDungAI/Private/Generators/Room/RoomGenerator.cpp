@@ -3,6 +3,7 @@
 #include "Generators/Room/RoomGenerator.h"
 #include "Utilities/Helpers/DungeonGenerationHelpers.h" 
 #include "Data/Grid/GridData.h"
+#include "Data/Room/CeilingData.h"
 #include "Data/Room/DoorData.h"
 #include "Data/Room/FloorData.h"
 #include "Data/Room/WallData.h"
@@ -178,6 +179,11 @@ bool URoomGenerator::GenerateFloor()
 	
 	// Clear previous placement data
 	ClearPlacedFloorMeshes();
+	
+	int32 FloorLargeTilesPlaced = 0;
+	int32 FloorMediumTilesPlaced = 0;
+	int32 FloorSmallTilesPlaced = 0;
+	int32 FloorFillerTilesPlaced = 0;
 
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateFloor - Starting floor generation"));
 
@@ -200,26 +206,28 @@ bool URoomGenerator::GenerateFloor()
 	UE_LOG(LogTemp, Log, TEXT("  Phase 2: Greedy fill with %d tile options"), FloorMeshes.Num());
 
 	// Large tiles (400x400, 200x400, 400x200)
-	FillWithTileSize(FloorMeshes, FIntPoint(4, 4)); // 400x400
-	FillWithTileSize(FloorMeshes, FIntPoint(2, 4)); // 200x400
-	FillWithTileSize(FloorMeshes, FIntPoint(4, 2)); // 400x200
+	FillWithTileSize(FloorMeshes, FIntPoint(4, 4), FloorLargeTilesPlaced, FloorMediumTilesPlaced, FloorSmallTilesPlaced, FloorFillerTilesPlaced);
+	FillWithTileSize(FloorMeshes, FIntPoint(2, 4), FloorLargeTilesPlaced, FloorMediumTilesPlaced, FloorSmallTilesPlaced, FloorFillerTilesPlaced);
+	FillWithTileSize(FloorMeshes, FIntPoint(4, 2), FloorLargeTilesPlaced, FloorMediumTilesPlaced, FloorSmallTilesPlaced, FloorFillerTilesPlaced);
 
 	// Medium tiles (200x200)
-	FillWithTileSize(FloorMeshes, FIntPoint(2, 2)); // 200x200
+	FillWithTileSize(FloorMeshes, FIntPoint(2, 2), FloorLargeTilesPlaced, FloorMediumTilesPlaced, FloorSmallTilesPlaced, FloorFillerTilesPlaced);
 
 	// Small tiles (100x200, 200x100, 100x100)
-	FillWithTileSize(FloorMeshes, FIntPoint(1, 2)); // 100x200
-	FillWithTileSize(FloorMeshes, FIntPoint(2, 1)); // 200x100
-	FillWithTileSize(FloorMeshes, FIntPoint(1, 1)); // 100x100
+	FillWithTileSize(FloorMeshes, FIntPoint(1, 2), FloorLargeTilesPlaced, FloorMediumTilesPlaced, FloorSmallTilesPlaced, FloorFillerTilesPlaced);
+	FillWithTileSize(FloorMeshes, FIntPoint(2, 1), FloorLargeTilesPlaced, FloorMediumTilesPlaced, FloorSmallTilesPlaced, FloorFillerTilesPlaced);
+	FillWithTileSize(FloorMeshes, FIntPoint(1, 1), FloorLargeTilesPlaced, FloorMediumTilesPlaced, FloorSmallTilesPlaced, FloorFillerTilesPlaced);
 	
 	// PHASE 3: GAP FILL (Fill remaining empty cells with any available mesh)
- 	int32 GapFillCount = FillRemainingGaps(FloorMeshes);
-	UE_LOG(LogTemp, Log, TEXT("  Phase 3: Filled %d remaining gaps"), GapFillCount);
+	int32 GapFillCount = FillRemainingGaps(FloorMeshes, FloorLargeTilesPlaced, FloorMediumTilesPlaced, FloorSmallTilesPlaced, FloorFillerTilesPlaced);
+	UE_LOG(LogTemp, Log, TEXT("  Phase 3:  Filled %d remaining gaps"), GapFillCount);
  
 	// FINAL STATISTICS
 	int32 RemainingEmpty = GetCellCountByType(EGridCellType::ECT_Empty);
 	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateFloor - Floor generation complete"));
 	UE_LOG(LogTemp, Log, TEXT("  Total meshes placed: %d"), PlacedFloorMeshes.Num());
+	UE_LOG(LogTemp, Log, TEXT("  Large:  %d, Medium: %d, Small: %d, Filler: %d"), 
+		FloorLargeTilesPlaced, FloorMediumTilesPlaced, FloorSmallTilesPlaced, FloorFillerTilesPlaced);
 	UE_LOG(LogTemp, Log, TEXT("  Remaining empty cells: %d"), RemainingEmpty);
 
 	return true;
@@ -347,7 +355,11 @@ int32 URoomGenerator::ExecuteForcedPlacements()
 	return SuccessfulPlacements;
 }
 
-int32 URoomGenerator::FillRemainingGaps(const TArray<FMeshPlacementInfo>& TilePool)
+int32 URoomGenerator::FillRemainingGaps(const TArray<FMeshPlacementInfo>& TilePool,
+	int32& OutLargeTiles,
+	int32& OutMediumTiles,
+	int32& OutSmallTiles,
+	int32& OutFillerTiles)
 {
 if (TilePool.Num() == 0)
 	{ UE_LOG(LogTemp, Warning, TEXT("URoomGenerator:: FillRemainingGaps - No meshes in tile pool! ")); return 0;}
@@ -434,10 +446,10 @@ if (TilePool.Num() == 0)
 
 						// Update statistics
 						int32 TileArea = TargetSize.X * TargetSize.Y;
-						if (TileArea >= 16) LargeTilesPlaced++;
-						else if (TileArea >= 4) MediumTilesPlaced++;
-						else if (TileArea >= 2) SmallTilesPlaced++;
-						else FillerTilesPlaced++;
+						if (TileArea >= 16) OutLargeTiles++;
+						else if (TileArea >= 4) OutMediumTiles++;
+						else if (TileArea >= 2) OutSmallTiles++;
+						else OutFillerTiles++;
 					}
 				}
 			}
@@ -1266,8 +1278,241 @@ void URoomGenerator::ClearPlacedDoorways()
 }
 #pragma endregion
 
+#pragma region Ceiling Generation
+bool URoomGenerator::GenerateCeiling()
+{
+    if (! bIsInitialized)
+    {
+        UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateCeiling - Generator not initialized! "));
+        return false;
+    }
+
+    if (! RoomData || RoomData->CeilingStyleData.IsNull())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("URoomGenerator::GenerateCeiling - No CeilingStyleData assigned"));
+        return false;
+    }
+
+    UCeilingData* CeilingData = RoomData->CeilingStyleData.LoadSynchronous();
+    if (!CeilingData)
+    {
+        UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateCeiling - Failed to load CeilingStyleData"));
+        return false;
+    }
+
+    // Clear previous ceiling data
+    ClearPlacedCeiling();
+
+    UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateCeiling - Starting ceiling generation"));
+
+    // Create occupancy grid
+    TArray<bool> CeilingOccupied;
+    CeilingOccupied.Init(false, GridSize.X * GridSize.Y);
+
+    FRandomStream Stream(FMath:: Rand());  // Random seed
+
+	int32 CeilingLargeTilesPlaced = 0;
+	int32 CeilingMediumTilesPlaced = 0;
+	int32 CeilingSmallTilesPlaced = 0;
+
+    // ========================================================================
+    // HELPER LAMBDAS
+    // ========================================================================
+
+    auto IsCellOccupied = [&](int32 X, int32 Y) -> bool
+    {
+        if (X < 0 || X >= GridSize.X || Y < 0 || Y >= GridSize.Y) return true;
+        return CeilingOccupied[Y * GridSize.X + X];
+    };
+
+    auto MarkCellsOccupied = [&](int32 StartX, int32 StartY, int32 SizeX, int32 SizeY)
+    {
+        for (int32 dy = 0; dy < SizeY; dy++)
+        {
+            for (int32 dx = 0; dx < SizeX; dx++)
+            {
+                int32 X = StartX + dx;
+                int32 Y = StartY + dy;
+                if (X >= 0 && X < GridSize.X && Y >= 0 && Y < GridSize.Y)
+                {
+                    CeilingOccupied[Y * GridSize.X + X] = true;
+                }
+            }
+        }
+    };
+
+    auto IsAreaAvailable = [&](int32 StartX, int32 StartY, int32 SizeX, int32 SizeY) -> bool
+    {
+        for (int32 dy = 0; dy < SizeY; dy++)
+        {
+            for (int32 dx = 0; dx < SizeX; dx++)
+            {
+                if (IsCellOccupied(StartX + dx, StartY + dy))
+                    return false;
+            }
+        }
+        return true;
+    };
+
+    auto SelectWeightedTile = [&](const TArray<FCeilingTile>& Pool) -> const FCeilingTile*
+    {
+        if (Pool. Num() == 0) return nullptr;
+
+        float TotalWeight = 0.0f;
+        for (const FCeilingTile& Tile : Pool)
+            TotalWeight += Tile.PlacementWeight;
+
+        if (TotalWeight <= 0.0f)
+            return &Pool[Stream.RandRange(0, Pool. Num() - 1)];
+
+        float RandomValue = Stream.FRand() * TotalWeight;
+        float CurrentWeight = 0.0f;
+
+        for (const FCeilingTile& Tile : Pool)
+        {
+            CurrentWeight += Tile.PlacementWeight;
+            if (RandomValue <= CurrentWeight)
+                return &Tile;
+        }
+
+        return &Pool. Last();
+    };
+
+    // ========================================================================
+    // PASS 1:  LARGE TILES (4x4)
+    // ========================================================================
+
+    if (CeilingData->LargeTilePool.Num() > 0)
+    {
+        for (int32 Y = 0; Y <= GridSize.Y - 4; Y++)
+        {
+            for (int32 X = 0; X <= GridSize.X - 4; X++)
+            {
+                if (IsAreaAvailable(X, Y, 4, 4))
+                {
+                    const FCeilingTile* SelectedTile = SelectWeightedTile(CeilingData->LargeTilePool);
+
+                    if (SelectedTile && ! SelectedTile->Mesh.IsNull())
+                    {
+                        // Calculate center position of 4x4 area
+                        FVector TilePosition = FVector(
+                            (X + 2.0f) * CellSize,
+                            (Y + 2.0f) * CellSize,
+                            CeilingData->CeilingHeight
+                        );
+
+                        FTransform TileTransform(CeilingData->CeilingRotation, TilePosition, FVector(1.0f));
+
+                        FPlacedCeilingInfo PlacedTile;
+                        PlacedTile.GridCoordinate = FIntPoint(X, Y);
+                        PlacedTile.TileSize = FIntPoint(4, 4);
+                        PlacedTile. Mesh = SelectedTile->Mesh;
+                        PlacedTile.Transform = TileTransform;
+
+                        PlacedCeilingTiles.Add(PlacedTile);
+                        MarkCellsOccupied(X, Y, 4, 4);
+                        CeilingLargeTilesPlaced++;
+                    }
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // PASS 2:  MEDIUM TILES (2x2)
+    // ========================================================================
+
+    if (CeilingData->MediumTilePool.Num() > 0)
+    {
+        for (int32 Y = 0; Y <= GridSize.Y - 2; Y++)
+        {
+            for (int32 X = 0; X <= GridSize.X - 2; X++)
+            {
+                if (IsAreaAvailable(X, Y, 2, 2))
+                {
+                    const FCeilingTile* SelectedTile = SelectWeightedTile(CeilingData->MediumTilePool);
+
+                    if (SelectedTile && !SelectedTile->Mesh.IsNull())
+                    {
+                        // Calculate center position of 2x2 area
+                        FVector TilePosition = FVector(
+                            (X + 1.0f) * CellSize,
+                            (Y + 1.0f) * CellSize,
+                            CeilingData->CeilingHeight
+                        );
+
+                        FTransform TileTransform(CeilingData->CeilingRotation, TilePosition, FVector(1.0f));
+
+                        FPlacedCeilingInfo PlacedTile;
+                        PlacedTile. GridCoordinate = FIntPoint(X, Y);
+                        PlacedTile.TileSize = FIntPoint(2, 2);
+                        PlacedTile.Mesh = SelectedTile->Mesh;
+                        PlacedTile. Transform = TileTransform;
+
+                        PlacedCeilingTiles.Add(PlacedTile);
+                        MarkCellsOccupied(X, Y, 2, 2);
+                        CeilingMediumTilesPlaced++;
+                    }
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // PASS 3:  SMALL TILES (1x1)
+    // ========================================================================
+
+    if (CeilingData->SmallTilePool.Num() > 0)
+    {
+        for (int32 Y = 0; Y < GridSize.Y; Y++)
+        {
+            for (int32 X = 0; X < GridSize.X; X++)
+            {
+                if (! IsCellOccupied(X, Y))
+                {
+                    const FCeilingTile* SelectedTile = SelectWeightedTile(CeilingData->SmallTilePool);
+
+                    if (SelectedTile && !SelectedTile->Mesh.IsNull())
+                    {
+                        // Calculate center of cell
+                        FVector TilePosition = FVector(
+                            (X + 0.5f) * CellSize,
+                            (Y + 0.5f) * CellSize,
+                            CeilingData->CeilingHeight
+                        );
+
+                        FTransform TileTransform(CeilingData->CeilingRotation, TilePosition, FVector(1.0f));
+
+                        FPlacedCeilingInfo PlacedTile;
+                        PlacedTile.GridCoordinate = FIntPoint(X, Y);
+                        PlacedTile. TileSize = FIntPoint(1, 1);
+                        PlacedTile.Mesh = SelectedTile->Mesh;
+                        PlacedTile.Transform = TileTransform;
+
+                        PlacedCeilingTiles.Add(PlacedTile);
+                        MarkCellsOccupied(X, Y, 1, 1);
+                        CeilingSmallTilesPlaced++;
+                    }
+                }
+            }
+        }
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateCeiling - Complete:  %d large, %d medium, %d small = %d total"),
+        LargeTilesPlaced, MediumTilesPlaced, SmallTilesPlaced, PlacedCeilingTiles. Num());
+
+    return true;
+}
+
+#pragma endregion
+
 #pragma region Internal Floor Generation
-void URoomGenerator::FillWithTileSize(const TArray<FMeshPlacementInfo>& TilePool, FIntPoint TargetSize)
+void URoomGenerator::FillWithTileSize(const TArray<FMeshPlacementInfo>& TilePool, 
+	FIntPoint TargetSize,
+	int32& OutLargeTiles,
+	int32& OutMediumTiles,
+	int32& OutSmallTiles,
+	int32& OutFillerTiles)
 {
 	// Filter tiles that match target size
 	TArray<FMeshPlacementInfo> MatchingTiles;
@@ -1334,10 +1579,10 @@ void URoomGenerator::FillWithTileSize(const TArray<FMeshPlacementInfo>& TilePool
 				{
 					// Update statistics
 					int32 TileArea = TargetSize.X * TargetSize.Y;
-					if (TileArea >= 16) LargeTilesPlaced++;
-					else if (TileArea >= 4) MediumTilesPlaced++;
-					else if (TileArea >= 2) SmallTilesPlaced++;
-					else FillerTilesPlaced++;
+					if (TileArea >= 16) OutLargeTiles++;
+					else if (TileArea >= 4) OutMediumTiles++;
+					else if (TileArea >= 2) OutSmallTiles++;
+					else OutFillerTiles++;
 				}
 			}
 		}

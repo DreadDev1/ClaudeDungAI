@@ -52,6 +52,29 @@ struct FGeneratorWallSegment
 	FGeneratorWallSegment() : Edge(EWallEdge::North), StartCell(0), SegmentLength(0), BaseMesh(nullptr), WallModule(nullptr) {}
 };
 
+/* Information about a placed ceiling tile */
+USTRUCT(BlueprintType)
+struct FPlacedCeilingInfo
+{
+	GENERATED_BODY()
+
+	/* Grid coordinate (top-left cell) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ceiling")
+	FIntPoint GridCoordinate = FIntPoint(0, 0);
+
+	/* Tile size in cells (e.g., 4x4, 2x2, 1x1) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ceiling")
+	FIntPoint TileSize = FIntPoint(1, 1);
+
+	/* Static mesh to use */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ceiling")
+	TSoftObjectPtr<UStaticMesh> Mesh;
+
+	/* World transform (component-space, relative to room) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ceiling")
+	FTransform Transform = FTransform::Identity;
+};
+
 /* RoomGenerator - Pure logic class for room generation Handles grid creation, mesh placement algorithms, and room data processing */
 UCLASS()
 class CLAUDEDUNGAI_API URoomGenerator : public UObject
@@ -108,8 +131,9 @@ public:
 	int32 ExecuteForcedPlacements();
 
 	/* Fill remaining empty cells with meshes from the pool */
-	int32 FillRemainingGaps(const TArray<FMeshPlacementInfo>& TilePool);
-
+	int32 FillRemainingGaps(const TArray<FMeshPlacementInfo>& TilePool, int32& OutLargeTiles,
+	int32& OutMediumTiles, int32& OutSmallTiles, int32& OutFillerTiles); 
+	
 	/**
 	 * Expand forced empty regions into individual cell list
 	 * Combines rectangular regions and individual cells into unified list */
@@ -174,6 +198,19 @@ public:
 
 #pragma endregion
 	
+#pragma region Ceiling Generation
+	/* Generate ceiling tile layout */
+	UFUNCTION(BlueprintCallable, Category = "Room Generation")
+	bool GenerateCeiling();
+
+	/* Get placed ceiling tiles (for spawner) */
+	UFUNCTION(BlueprintPure, Category = "Room Generation")
+	const TArray<FPlacedCeilingInfo>& GetPlacedCeilingTiles() const { return PlacedCeilingTiles; }
+
+	/* Clear ceiling data */
+	void ClearPlacedCeiling() { PlacedCeilingTiles.Empty(); }
+#pragma endregion
+	
 #pragma region Coordinate Conversion
 	/* Convert grid coordinates to local position (center of cell) */
 	FVector GridToLocalPosition(FIntPoint GridCoord) const;
@@ -232,9 +269,13 @@ private:
 	UPROPERTY()
 	TArray<FGeneratorWallSegment> PlacedBaseWallSegments;
 	
-	// ✅ NEW: Placed doorways
+	// Placed doorways
 	UPROPERTY()
 	TArray<FPlacedDoorwayInfo> PlacedDoorwayMeshes;
+	
+	/* Placed ceiling tiles (output of GenerateCeiling) */
+	UPROPERTY()
+	TArray<FPlacedCeilingInfo> PlacedCeilingTiles;
 	
 	// Statistics tracking
 	int32 LargeTilesPlaced;
@@ -260,7 +301,8 @@ private:
 	 * @param TilePool - Pool of meshes to choose from
 	 * @param TargetSize - Target size to match (for filtering)
 	 */
-	void FillWithTileSize(const TArray<FMeshPlacementInfo>& TilePool, FIntPoint TargetSize);
+	void FillWithTileSize(const TArray<FMeshPlacementInfo>& TilePool, FIntPoint TargetSize, 
+	int32& OutLargeTiles, int32& OutMediumTiles, int32& OutSmallTiles, int32& OutFillerTiles);
 
 	/**
 	 * Select a mesh from pool using weighted random selection
