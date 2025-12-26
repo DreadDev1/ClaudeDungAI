@@ -18,7 +18,7 @@ struct FCeilingTile
 
 	// Size of this tile in grid cells (1 = 100x100, 4 = 400x400)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ceiling Tile")
-	int32 TileSize = 1;
+	FIntPoint GridFootprint = FIntPoint(1, 1);
 
 	// Placement weight for weighted random selection (0.0 to 10.0)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ceiling Tile", meta=(ClampMin="0.0", ClampMax="10.0"))

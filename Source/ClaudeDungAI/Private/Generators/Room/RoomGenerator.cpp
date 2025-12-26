@@ -1283,7 +1283,7 @@ bool URoomGenerator::GenerateCeiling()
 {
     if (! bIsInitialized)
     {
-        UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateCeiling - Generator not initialized! "));
+        UE_LOG(LogTemp, Error, TEXT("URoomGenerator::GenerateCeiling - Generator not initialized!  "));
         return false;
     }
 
@@ -1309,11 +1309,11 @@ bool URoomGenerator::GenerateCeiling()
     TArray<bool> CeilingOccupied;
     CeilingOccupied.Init(false, GridSize.X * GridSize.Y);
 
-    FRandomStream Stream(FMath:: Rand());  // Random seed
+    FRandomStream Stream(FMath::  Rand());
 
-	int32 CeilingLargeTilesPlaced = 0;
-	int32 CeilingMediumTilesPlaced = 0;
-	int32 CeilingSmallTilesPlaced = 0;
+    int32 CeilingLargeTilesPlaced = 0;
+    int32 CeilingMediumTilesPlaced = 0;
+    int32 CeilingSmallTilesPlaced = 0;
 
     // ========================================================================
     // HELPER LAMBDAS
@@ -1325,11 +1325,11 @@ bool URoomGenerator::GenerateCeiling()
         return CeilingOccupied[Y * GridSize.X + X];
     };
 
-    auto MarkCellsOccupied = [&](int32 StartX, int32 StartY, int32 SizeX, int32 SizeY)
+    auto MarkCellsOccupied = [&](int32 StartX, int32 StartY, FIntPoint Size)
     {
-        for (int32 dy = 0; dy < SizeY; dy++)
+        for (int32 dy = 0; dy < Size.Y; dy++)
         {
-            for (int32 dx = 0; dx < SizeX; dx++)
+            for (int32 dx = 0; dx < Size.X; dx++)
             {
                 int32 X = StartX + dx;
                 int32 Y = StartY + dy;
@@ -1341,11 +1341,11 @@ bool URoomGenerator::GenerateCeiling()
         }
     };
 
-    auto IsAreaAvailable = [&](int32 StartX, int32 StartY, int32 SizeX, int32 SizeY) -> bool
+    auto IsAreaAvailable = [&](int32 StartX, int32 StartY, FIntPoint Size) -> bool
     {
-        for (int32 dy = 0; dy < SizeY; dy++)
+        for (int32 dy = 0; dy < Size.Y; dy++)
         {
-            for (int32 dx = 0; dx < SizeX; dx++)
+            for (int32 dx = 0; dx < Size.X; dx++)
             {
                 if (IsCellOccupied(StartX + dx, StartY + dy))
                     return false;
@@ -1356,14 +1356,14 @@ bool URoomGenerator::GenerateCeiling()
 
     auto SelectWeightedTile = [&](const TArray<FCeilingTile>& Pool) -> const FCeilingTile*
     {
-        if (Pool. Num() == 0) return nullptr;
+        if (Pool.  Num() == 0) return nullptr;
 
         float TotalWeight = 0.0f;
         for (const FCeilingTile& Tile : Pool)
             TotalWeight += Tile.PlacementWeight;
 
         if (TotalWeight <= 0.0f)
-            return &Pool[Stream.RandRange(0, Pool. Num() - 1)];
+            return &Pool[Stream.RandRange(0, Pool.Num() - 1)];
 
         float RandomValue = Stream.FRand() * TotalWeight;
         float CurrentWeight = 0.0f;
@@ -1375,9 +1375,16 @@ bool URoomGenerator::GenerateCeiling()
                 return &Tile;
         }
 
-        return &Pool. Last();
+        return &Pool.  Last();
     };
 
+	// Pass 0 Forced Placements
+	int32 ForcedCount = ExecuteForcedCeilingPlacements(CeilingOccupied);
+	if (ForcedCount > 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("  Phase 0: Placed %d forced ceiling tiles"), ForcedCount);
+	}
+	
     // ========================================================================
     // PASS 1:  LARGE TILES (4x4)
     // ========================================================================
@@ -1388,16 +1395,22 @@ bool URoomGenerator::GenerateCeiling()
         {
             for (int32 X = 0; X <= GridSize.X - 4; X++)
             {
-                if (IsAreaAvailable(X, Y, 4, 4))
+                // ✅ CHANGED:    Use GridFootprint instead of hardcoded size
+                FIntPoint TargetSize(4, 4);
+                
+                if (IsAreaAvailable(X, Y, TargetSize))
                 {
                     const FCeilingTile* SelectedTile = SelectWeightedTile(CeilingData->LargeTilePool);
 
-                    if (SelectedTile && ! SelectedTile->Mesh.IsNull())
+                    if (SelectedTile && ! SelectedTile->Mesh. IsNull())
                     {
-                        // Calculate center position of 4x4 area
+                        // ✅ CHANGED:   Use GridFootprint from tile
+                        FIntPoint TileFootprint = SelectedTile->GridFootprint;
+                        
+                        // Calculate center position based on actual footprint
                         FVector TilePosition = FVector(
-                            (X + 2.0f) * CellSize,
-                            (Y + 2.0f) * CellSize,
+                            (X + TileFootprint.X / 2.0f) * CellSize,
+                            (Y + TileFootprint.Y / 2.0f) * CellSize,
                             CeilingData->CeilingHeight
                         );
 
@@ -1405,12 +1418,12 @@ bool URoomGenerator::GenerateCeiling()
 
                         FPlacedCeilingInfo PlacedTile;
                         PlacedTile.GridCoordinate = FIntPoint(X, Y);
-                        PlacedTile.TileSize = FIntPoint(4, 4);
+                        PlacedTile.TileSize = TileFootprint;  // ✅ Use actual footprint
                         PlacedTile. Mesh = SelectedTile->Mesh;
                         PlacedTile.Transform = TileTransform;
 
                         PlacedCeilingTiles.Add(PlacedTile);
-                        MarkCellsOccupied(X, Y, 4, 4);
+                        MarkCellsOccupied(X, Y, TileFootprint);  // ✅ Use actual footprint
                         CeilingLargeTilesPlaced++;
                     }
                 }
@@ -1428,29 +1441,34 @@ bool URoomGenerator::GenerateCeiling()
         {
             for (int32 X = 0; X <= GridSize.X - 2; X++)
             {
-                if (IsAreaAvailable(X, Y, 2, 2))
+                // ✅ CHANGED:   Use GridFootprint
+                FIntPoint TargetSize(2, 2);
+                
+                if (IsAreaAvailable(X, Y, TargetSize))
                 {
                     const FCeilingTile* SelectedTile = SelectWeightedTile(CeilingData->MediumTilePool);
 
                     if (SelectedTile && !SelectedTile->Mesh.IsNull())
                     {
-                        // Calculate center position of 2x2 area
+                        // ✅ CHANGED:   Use GridFootprint from tile
+                        FIntPoint TileFootprint = SelectedTile->GridFootprint;
+                        
                         FVector TilePosition = FVector(
-                            (X + 1.0f) * CellSize,
-                            (Y + 1.0f) * CellSize,
+                            (X + TileFootprint.X / 2.0f) * CellSize,
+                            (Y + TileFootprint.Y / 2.0f) * CellSize,
                             CeilingData->CeilingHeight
                         );
 
                         FTransform TileTransform(CeilingData->CeilingRotation, TilePosition, FVector(1.0f));
 
                         FPlacedCeilingInfo PlacedTile;
-                        PlacedTile. GridCoordinate = FIntPoint(X, Y);
-                        PlacedTile.TileSize = FIntPoint(2, 2);
-                        PlacedTile.Mesh = SelectedTile->Mesh;
-                        PlacedTile. Transform = TileTransform;
+                        PlacedTile.GridCoordinate = FIntPoint(X, Y);
+                        PlacedTile.TileSize = TileFootprint;
+                        PlacedTile. Mesh = SelectedTile->Mesh;
+                        PlacedTile.Transform = TileTransform;
 
                         PlacedCeilingTiles.Add(PlacedTile);
-                        MarkCellsOccupied(X, Y, 2, 2);
+                        MarkCellsOccupied(X, Y, TileFootprint);
                         CeilingMediumTilesPlaced++;
                     }
                 }
@@ -1468,29 +1486,31 @@ bool URoomGenerator::GenerateCeiling()
         {
             for (int32 X = 0; X < GridSize.X; X++)
             {
-                if (! IsCellOccupied(X, Y))
+                if (!  IsCellOccupied(X, Y))
                 {
                     const FCeilingTile* SelectedTile = SelectWeightedTile(CeilingData->SmallTilePool);
 
-                    if (SelectedTile && !SelectedTile->Mesh.IsNull())
+                    if (SelectedTile && ! SelectedTile->Mesh. IsNull())
                     {
-                        // Calculate center of cell
+                        // ✅ CHANGED:   Use GridFootprint from tile
+                        FIntPoint TileFootprint = SelectedTile->GridFootprint;
+                        
                         FVector TilePosition = FVector(
-                            (X + 0.5f) * CellSize,
-                            (Y + 0.5f) * CellSize,
+                            (X + TileFootprint.X / 2.0f) * CellSize,
+                            (Y + TileFootprint.Y / 2.0f) * CellSize,
                             CeilingData->CeilingHeight
                         );
 
                         FTransform TileTransform(CeilingData->CeilingRotation, TilePosition, FVector(1.0f));
 
                         FPlacedCeilingInfo PlacedTile;
-                        PlacedTile.GridCoordinate = FIntPoint(X, Y);
-                        PlacedTile. TileSize = FIntPoint(1, 1);
+                        PlacedTile. GridCoordinate = FIntPoint(X, Y);
+                        PlacedTile.TileSize = TileFootprint;
                         PlacedTile.Mesh = SelectedTile->Mesh;
                         PlacedTile.Transform = TileTransform;
 
                         PlacedCeilingTiles.Add(PlacedTile);
-                        MarkCellsOccupied(X, Y, 1, 1);
+                        MarkCellsOccupied(X, Y, TileFootprint);
                         CeilingSmallTilesPlaced++;
                     }
                 }
@@ -1498,11 +1518,144 @@ bool URoomGenerator::GenerateCeiling()
         }
     }
 
-    UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateCeiling - Complete:  %d large, %d medium, %d small = %d total"),
-        LargeTilesPlaced, MediumTilesPlaced, SmallTilesPlaced, PlacedCeilingTiles. Num());
+    UE_LOG(LogTemp, Log, TEXT("URoomGenerator::GenerateCeiling - Complete:    %d large, %d medium, %d small = %d total"),
+        CeilingLargeTilesPlaced, CeilingMediumTilesPlaced, CeilingSmallTilesPlaced, PlacedCeilingTiles. Num());
 
     return true;
 }
+
+int32 URoomGenerator::ExecuteForcedCeilingPlacements(TArray<bool>& CeilingOccupied)
+{
+	if (! bIsInitialized || !RoomData)
+	{
+		UE_LOG(LogTemp, Error, TEXT("URoomGenerator::ExecuteForcedCeilingPlacements - Not initialized! "));
+		return 0;
+	}
+
+	// Check if there are any forced placements
+	if (RoomData->ForcedCeilingPlacements.Num() == 0)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("URoomGenerator:: ExecuteForcedCeilingPlacements - No forced ceiling tiles"));
+		return 0;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedCeilingPlacements - Processing %d forced tiles"),
+		RoomData->ForcedCeilingPlacements.Num());
+
+	int32 SuccessfulPlacements = 0;
+	int32 FailedPlacements = 0;
+
+	// Load ceiling data for height/rotation
+	UCeilingData* CeilingData = RoomData->CeilingStyleData. LoadSynchronous();
+	if (!CeilingData)
+	{
+		UE_LOG(LogTemp, Error, TEXT("ExecuteForcedCeilingPlacements - Failed to load CeilingStyleData"));
+		return 0;
+	}
+
+	for (int32 i = 0; i < RoomData->ForcedCeilingPlacements. Num(); ++i)
+	{
+		const FForcedCeilingPlacement& ForcedTile = RoomData->ForcedCeilingPlacements[i];
+		const FCeilingTile& TileInfo = ForcedTile.TileInfo;
+
+		UE_LOG(LogTemp, Verbose, TEXT("  Forced Tile [%d]:  Coord=(%d,%d), Footprint=(%d,%d)"),
+			i, ForcedTile.GridCoordinate. X, ForcedTile. GridCoordinate.Y,
+			TileInfo.GridFootprint.X, TileInfo.GridFootprint.Y);
+
+		// VALIDATION: Load mesh
+		UStaticMesh* Mesh = TileInfo.Mesh.LoadSynchronous();
+		if (!Mesh)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("    SKIPPED: Mesh failed to load"));
+			FailedPlacements++;
+			continue;
+		}
+
+		// VALIDATION: Check bounds
+		int32 StartX = ForcedTile.GridCoordinate.X;
+		int32 StartY = ForcedTile.GridCoordinate.Y;
+		int32 EndX = StartX + TileInfo.GridFootprint. X;
+		int32 EndY = StartY + TileInfo.GridFootprint.Y;
+
+		if (EndX > GridSize.X || EndY > GridSize.Y || StartX < 0 || StartY < 0)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("    SKIPPED:  Out of bounds (Start=%d,%d, End=%d,%d, GridSize=%d,%d)"),
+				StartX, StartY, EndX, EndY, GridSize. X, GridSize.Y);
+			FailedPlacements++;
+			continue;
+		}
+
+		// VALIDATION: Check if area is available
+		bool bCanPlace = true;
+		for (int32 dy = 0; dy < TileInfo. GridFootprint.Y; ++dy)
+		{
+			for (int32 dx = 0; dx < TileInfo.GridFootprint.X; ++dx)
+			{
+				int32 CheckX = StartX + dx;
+				int32 CheckY = StartY + dy;
+				int32 Index = CheckY * GridSize.X + CheckX;
+
+				if (CeilingOccupied. IsValidIndex(Index) && CeilingOccupied[Index])
+				{
+					bCanPlace = false;
+					UE_LOG(LogTemp, Warning, TEXT("    SKIPPED:  Cell (%d,%d) already occupied"), CheckX, CheckY);
+					break;
+				}
+			}
+			if (!bCanPlace) break;
+		}
+
+		if (! bCanPlace)
+		{
+			FailedPlacements++;
+			continue;
+		}
+
+		// PLACEMENT: Calculate transform
+		FVector TilePosition = FVector(
+			(StartX + TileInfo.GridFootprint.X / 2.0f) * CellSize,
+			(StartY + TileInfo.GridFootprint.Y / 2.0f) * CellSize,
+			CeilingData->CeilingHeight
+		);
+
+		FTransform TileTransform(CeilingData->CeilingRotation, TilePosition, FVector(1.0f));
+
+		// TRACKING: Store placed tile
+		FPlacedCeilingInfo PlacedTile;
+		PlacedTile.GridCoordinate = FIntPoint(StartX, StartY);
+		PlacedTile. TileSize = TileInfo. GridFootprint;
+		PlacedTile.Mesh = TileInfo.Mesh;
+		PlacedTile.Transform = TileTransform;
+
+		PlacedCeilingTiles. Add(PlacedTile);
+
+		// OCCUPANCY:  Mark cells as occupied
+		for (int32 dy = 0; dy < TileInfo.GridFootprint.Y; ++dy)
+		{
+			for (int32 dx = 0; dx < TileInfo.GridFootprint.X; ++dx)
+			{
+				int32 MarkX = StartX + dx;
+				int32 MarkY = StartY + dy;
+				int32 Index = MarkY * GridSize.X + MarkX;
+
+				if (CeilingOccupied.IsValidIndex(Index))
+				{
+					CeilingOccupied[Index] = true;
+				}
+			}
+		}
+
+		UE_LOG(LogTemp, Verbose, TEXT("    ✓ Placed forced tile at (%d,%d) size (%dx%d)"),
+			StartX, StartY, TileInfo.GridFootprint.X, TileInfo.GridFootprint.Y);
+		SuccessfulPlacements++;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URoomGenerator::ExecuteForcedCeilingPlacements - Placed %d/%d tiles (%d failed)"),
+		SuccessfulPlacements, RoomData->ForcedCeilingPlacements.Num(), FailedPlacements);
+
+	return SuccessfulPlacements;
+}
+
 
 #pragma endregion
 

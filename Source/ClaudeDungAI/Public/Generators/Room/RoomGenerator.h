@@ -203,6 +203,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Room Generation")
 	bool GenerateCeiling();
 
+	/* Execute forced ceiling placements from RoomData */
+	int32 ExecuteForcedCeilingPlacements(TArray<bool>& CeilingOccupied);
+	
 	/* Get placed ceiling tiles (for spawner) */
 	UFUNCTION(BlueprintPure, Category = "Room Generation")
 	const TArray<FPlacedCeilingInfo>& GetPlacedCeilingTiles() const { return PlacedCeilingTiles; }

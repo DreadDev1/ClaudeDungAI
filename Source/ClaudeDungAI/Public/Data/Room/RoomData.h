@@ -45,6 +45,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Styles")
 	TSoftObjectPtr<UWallData> WallStyleData;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Walls")
+	TArray<FForcedWallPlacement> ForcedWallPlacements;
+	
 	// Wall thickness for rooms using this data (in cm)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Room Properties")
 	float WallThickness = 25.0f;
@@ -55,42 +58,44 @@ public:
 	TSoftObjectPtr<UDoorData> DoorStyleData;
 	
 	/* Manual doorway placements (designer-specified) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Manual")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Doorways|Manual")
 	TArray<FFixedDoorLocation> ForcedDoorways;
 
 	/* Enable automatic standard doorway generation (for hallway connectivity) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Automatic")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Doorways|Automatic")
 	bool bGenerateStandardDoorway = true;
 
 	/* Standard doorway width in cells (for hallway connections) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Automatic", meta = (ClampMin = "2", ClampMax = "8"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Doorways|Automatic", meta = (ClampMin = "2", ClampMax = "8"))
 	int32 StandardDoorwayWidth = 4;
 
 	/* Use fixed edge for standard doorway (true) or pick randomly (false) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Automatic")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Doorways|Automatic")
 	bool bSetStandardDoorwayEdge = false;
 	
 	/* Which edge to place standard doorway (if bSetStandardDoorwayEdge = true) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Automatic", meta = (EditCondition = "bSetStandardDoorwayEdge"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Doorways|Automatic", meta = (EditCondition = "bSetStandardDoorwayEdge"))
 	EWallEdge StandardDoorwayEdge = EWallEdge::North;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Automatic Placement", 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Doorways|Automatic Placement", 
 	meta = (EditCondition = "bGenerateStandardDoorway && ! bSetStandardDoorwayEdge"))
 	bool bMultipleDoorways = false;
 	
 	/* Number of automatic doorways to generate (only used if bMultipleDoorways = true) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Automatic Placement", 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Doorways|Automatic Placement", 
 		meta = (ClampMin = "2", ClampMax = "4", EditCondition = "bMultipleDoorways && bGenerateStandardDoorway && !bSetStandardDoorwayEdge"))
 	int32 NumAutomaticDoorways = 2;
 
 	/* Default door data (used for standard doorway if not specified) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Doorways|Defaults")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Doorways|Defaults")
 	UDoorData* DefaultDoorData = nullptr;
 #pragma endregion
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Styles")
 	TSoftObjectPtr<UCeilingData> CeilingStyleData;
 	
-
+	/* Array of specific ceiling tiles to force-place at exact coordinates */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Ceiling")
+	TArray<FForcedCeilingPlacement> ForcedCeilingPlacements;
 	
 	// --- Interior Mesh Randomization Pool ---
 
@@ -98,10 +103,4 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interior Meshes")
 	TArray<FMeshPlacementInfo> InteriorMeshPool;
 	
-
-	
-	
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Designer Overrides|Walls")
-	TArray<FForcedWallPlacement> ForcedWallPlacements;
 };

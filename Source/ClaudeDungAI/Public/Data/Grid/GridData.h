@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Data/Room/CeilingData.h"
 #include "Engine/StaticMesh.h"
 #include "GridData.generated.h"
 
@@ -13,6 +14,7 @@ static constexpr float CELL_SIZE = 100.0f;
 class UWallData; 
 class UFloorData;
 class UDoorData;
+class UCeilingData;
 
 // --- Enums ---
 
@@ -328,5 +330,20 @@ struct FPlacedDoorwayInfo
 		, DoorData(nullptr)
 		, bIsStandardDoorway(false)
 	{}
+};
+
+/* Forced ceiling placement structure (designer override system) */
+USTRUCT(BlueprintType)
+struct FForcedCeilingPlacement
+{
+	GENERATED_BODY()
+
+	/* Grid coordinate (top-left cell of placement) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Forced Placement")
+	FIntPoint GridCoordinate = FIntPoint(0, 0);
+
+	/* Ceiling tile info to place at this location */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Forced Placement")
+	FCeilingTile TileInfo;
 };
 
