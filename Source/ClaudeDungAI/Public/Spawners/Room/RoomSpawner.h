@@ -88,7 +88,14 @@ public:
 	/** Clear all spawned doorway meshes */
 	UFUNCTION(CallInEditor, Category = "Room Generation")
 	void ClearDoorwayMeshes();
-	
+
+	/* Generate ceiling meshes */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void GenerateCeilingMeshes();
+
+	/* Clear ceiling meshes */
+	UFUNCTION(CallInEditor, Category = "Room Generation")
+	void ClearCeilingMeshes();	
 
 #pragma region Debug Functions
 #pragma region Grid Coordinate Text Rendering
@@ -143,6 +150,10 @@ private:
 	// Track spawned corner mesh instances
 	UPROPERTY()
 	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> CornerMeshComponents;
+	
+	// Track spawned corner mesh instances
+	UPROPERTY()
+	TMap<TSoftObjectPtr<UStaticMesh>, UInstancedStaticMeshComponent*> CeilingMeshComponents;
 	
 	/* Spawned doorway actors (replaces ISM doorway system) */
 	UPROPERTY()

@@ -564,6 +564,115 @@ void ARoomSpawner::ClearDoorwayMeshes()
 	DebugHelpers->LogImportant(TEXT("Doorway actors cleared (layout preserved, offsets will update on next spawn)"));
 }
 
+// Add these at the end of the file (or with your other generation functions):
+
+void ARoomSpawner::GenerateCeilingMeshes()
+{
+    DebugHelpers->LogSectionHeader(TEXT("GENERATE CEILING MESHES"));
+
+    if (!EnsureGeneratorReady())
+    {
+        DebugHelpers->LogCritical(TEXT("Failed to initialize generator!"));
+        DebugHelpers->LogSectionHeader(TEXT("GENERATE CEILING MESHES"));
+        return;
+    }
+
+    // Clear existing ceiling meshes
+    ClearCeilingMeshes();
+
+    DebugHelpers->LogImportant(TEXT("Generating ceiling layout..."));
+
+    // Generate ceiling layout in RoomGenerator
+    if (! RoomGenerator->GenerateCeiling())
+    {
+        DebugHelpers->LogCritical(TEXT("Ceiling generation failed!"));
+        DebugHelpers->LogSectionHeader(TEXT("GENERATE CEILING MESHES"));
+        return;
+    }
+
+    // Get placed ceiling tiles from generator
+    const TArray<FPlacedCeilingInfo>& PlacedTiles = RoomGenerator->GetPlacedCeilingTiles();
+
+    if (PlacedTiles. Num() == 0)
+    {
+        DebugHelpers->LogImportant(TEXT("No ceiling tiles to spawn"));
+        DebugHelpers->LogSectionHeader(TEXT("GENERATE CEILING MESHES"));
+        return;
+    }
+
+    DebugHelpers->LogImportant(FString::Printf(TEXT("Spawning %d ceiling tiles... "), PlacedTiles.Num()));
+
+    // Get room origin for world space
+    FVector RoomOrigin = GetActorLocation();
+
+    int32 TilesSpawned = 0;
+    int32 TilesSkipped = 0;
+
+    // Spawn each ceiling tile
+    for (const FPlacedCeilingInfo& PlacedTile : PlacedTiles)
+    {
+        // Load mesh
+        UStaticMesh* Mesh = PlacedTile.Mesh. LoadSynchronous();
+        if (!Mesh)
+        {
+            TilesSkipped++;
+            continue;
+        }
+
+        // ✅ FIXED:    Use PlacedTile.Transform directly (it's already component-space)
+        // Don't modify it - let the helper handle world space conversion
+        
+        // Get or create ISM component
+        UInstancedStaticMeshComponent* ISM = UDungeonSpawnerHelpers:: GetOrCreateISMComponent(
+            this,
+            PlacedTile.Mesh,
+            CeilingMeshComponents,
+            TEXT("Ceiling_"),
+            true
+        );
+
+        if (ISM)
+        {
+            // ✅ FIXED:   Pass transform and origin separately (like floors do)
+            int32 InstanceIndex = UDungeonSpawnerHelpers:: SpawnMeshInstance(
+                ISM, 
+                PlacedTile.Transform,  // ← Component-space (includes rotation)
+                RoomOrigin);            // ← Helper adds this to position
+
+            if (InstanceIndex >= 0)
+            {
+                TilesSpawned++;
+            }
+            else
+            {
+                TilesSkipped++;
+            }
+        }
+        else
+        {
+            TilesSkipped++;
+        }
+    }
+
+    DebugHelpers->LogImportant(FString::Printf(TEXT("Ceiling generation complete:   %d tiles spawned, %d skipped"),
+        TilesSpawned, TilesSkipped));
+    DebugHelpers->LogSectionHeader(TEXT("GENERATE CEILING MESHES"));
+}
+
+void ARoomSpawner::ClearCeilingMeshes()
+{
+    // Iterate over TMap values
+    for (auto& Pair : CeilingMeshComponents)
+    {
+        if (Pair.Value)
+        {
+            Pair.Value->ClearInstances();
+        }
+    }
+
+    DebugHelpers->LogImportant(TEXT("Ceiling meshes cleared"));
+}
+
 #pragma region Doorway Side Fill Spawning
 
 
