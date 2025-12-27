@@ -128,7 +128,7 @@ public:
 #pragma region Floor Generation
 
 	/* Generate floor meshes using sequential weighted fill algorithm */
-	bool GenerateFloor();
+	virtual bool GenerateFloor();
 
 	/* Get list of placed floor meshes */
 	const TArray<FPlacedMeshInfo>& GetPlacedFloorMeshes() const { return PlacedFloorMeshes; }
